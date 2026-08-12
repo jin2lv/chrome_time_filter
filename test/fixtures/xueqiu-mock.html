@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>雪球模拟信息流（时光机测试夹具）</title>
+    <style>
+      body { font-family: system-ui, 'PingFang SC', sans-serif; max-width: 640px; margin: 0 auto; padding: 16px; }
+      .timeline__item { border: 1px solid #eee; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
+      .timeline__item__info { font-size: 12px; color: #888; margin-bottom: 6px; }
+      .user-name { font-weight: 600; color: #333; }
+      .date-and-source { color: #999; margin-left: 6px; }
+      .timeline__item__content { font-size: 14px; line-height: 1.6; }
+      button { margin-top: 12px; padding: 8px 16px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; }
+      .tm-collapsed { padding: 10px 14px; margin: 8px 0; background: rgba(128,128,128,.08); border: 1px dashed rgba(128,128,128,.4); border-radius: 8px; cursor: pointer; font-size: 13px; color: #888; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <h2 style="font-size:16px">雪球模拟信息流 <small style="color:#999">(时光机测试夹具 — 模拟 article.timeline__item + a.date-and-source)</small></h2>
+    <div id="timeline"></div>
+    <button id="load-more">加载更多</button>
+
+    <script>
+      // 帖子定义：timeType: relative | absolute | unparseable，delta 为相对当前时刻的偏移（分钟）
+      // expectFilter 为期望的过滤结果（截止时间 = 2小时前时）
+      const DEFS = [
+        { u: '甲', delta: 9, type: 'relative', expectFilter: true },      // 9分钟前 → 过滤
+        { u: '乙', delta: 17, type: 'relative', expectFilter: true },     // 17分钟前 → 过滤
+        { u: '丙', delta: 45, type: 'relative', expectFilter: true },     // 45分钟前 → 过滤
+        { u: '丁', delta: 110, type: 'relative', expectFilter: true },    // 110分钟前 → 过滤
+        { u: '戊', delta: 3 * 60, type: 'relative', expectFilter: false },   // 3小时前 → 保留
+        { u: '己', delta: 5 * 60, type: 'relative', expectFilter: false },   // 5小时前 → 保留
+        { u: '庚', delta: 26 * 60, type: 'relative', expectFilter: false },  // 26小时前（昨天）→ 保留
+        { u: '辛', delta: 3 * 24 * 60, type: 'relative', expectFilter: false }, // 3天前 → 保留
+        { u: '壬', delta: 30, type: 'absolute', expectFilter: true },      // 绝对时间 30分钟前 → 过滤
+        { u: '癸', delta: 4 * 60, type: 'absolute', expectFilter: false }, // 绝对时间 4小时前 → 保留
+        { u: '子', delta: 0, type: 'unparseable', expectFilter: false },   // "刚刚" → 无法解析，保留
+        { u: '丑', delta: 0, type: 'unparseable2', expectFilter: false },  // "x个月前" → 无法解析，保留
+      ];
+
+      const now = Date.now();
+      const fmt = (ts) => {
+        const d = new Date(ts);
+        const p = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+      };
+      const relText = (deltaMin) => {
+        if (deltaMin < 60) return `${deltaMin}分钟前`;
+        if (deltaMin < 24 * 60) return `${Math.floor(deltaMin / 60)}小时前`;
+        return `${Math.floor(deltaMin / (24 * 60))}天前`;
+      };
+
+      function buildPost(d, i) {
+        const el = document.createElement('article');
+        el.className = 'timeline__item';
+        el.dataset.expectFilter = String(d.expectFilter);
+        let timeText;
+        if (d.type === 'relative') timeText = relText(d.delta);
+        else if (d.type === 'absolute') timeText = fmt(now - d.delta * 60000);
+        else if (d.type === 'unparseable') timeText = '刚刚';
+        else timeText = '3个月前';
+        el.innerHTML = `
+          <div class="timeline__item__info">
+            <span class="user-name">${d.u}${i}</span>
+            <a class="date-and-source">${timeText}· 来自测试机</a>
+          </div>
+          <div class="timeline__item__content">测试帖子 #${i}：这是一条用于验证时光机过滤逻辑的模拟内容</div>`;
+        return el;
+      }
+
+      const timeline = document.getElementById('timeline');
+      DEFS.forEach((d, i) => timeline.appendChild(buildPost(d, i)));
+
+      // 滚动加载模拟：追加 2 条新帖子（MutationObserver 应处理）
+      document.getElementById('load-more').addEventListener('click', () => {
+        const extra = [
+          { u: '新', delta: 3, type: 'relative', expectFilter: true },
+          { u: '新', delta: 10 * 60, type: 'relative', expectFilter: false }, // 10小时前，避开截止边界
+        ];
+        extra.forEach((d, i) => timeline.appendChild(buildPost(d, DEFS.length + i)));
+      });
+    </script>
+  </body>
+</html>

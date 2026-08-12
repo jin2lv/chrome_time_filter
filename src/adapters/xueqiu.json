@@ -1,0 +1,29 @@
+{
+  "version": "0.1.1",
+  "platforms": [
+    {
+      "name": "雪球",
+      "domains": ["xueqiu.com"],
+      "post_selectors": ["article.timeline__item", ".timeline__item"],
+      "timestamp": {
+        "selector": "a.date-and-source",
+        "type": "relative",
+        "patterns": [
+          { "regex": "^(\\d+)分钟前", "unit": "minute", "multiplier": 1 },
+          { "regex": "^(\\d+)小时前", "unit": "hour", "multiplier": 1 },
+          { "regex": "^昨天", "unit": "day", "multiplier": 1 },
+          { "regex": "^(\\d+)天前", "unit": "day", "multiplier": 1 }
+        ],
+        "attr": null
+      },
+      "comment_selectors": [".comment__item"],
+      "comment_timestamp_selector": "span.time",
+      "quick_presets": [
+        { "label": "1小时前", "value": "1_hour_ago" },
+        { "label": "今日0点", "value": "today_midnight" },
+        { "label": "昨日0点", "value": "yesterday_midnight" }
+      ],
+      "notes": "DOM 取证于 2026-08-11：个股页信息流 article.timeline__item，时间戳 a.date-and-source 为相对时间（'9分钟前· 来自iPhone'，需按 '·' 拆分）。详情页评论 .comment__item（父 .comment__list），时间戳 span.time 格式 '今天 08:17 · 江苏'（今天/昨天+HH:mm，按 '·' 拆分）。"
+    }
+  ]
+}

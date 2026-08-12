@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>时光机</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="app" class="popup">
+      <header class="header">
+        <span class="logo">⏳ 时光机</span>
+        <button id="toggle-btn" class="toggle" disabled>—</button>
+      </header>
+
+      <div id="auth-area" hidden>
+        <p class="auth-text">此站点未授权，点击授权后即可使用</p>
+        <button id="auth-btn" class="preset">授权此站点</button>
+      </div>
+
+      <p id="precision-hint" class="precision-hint" hidden>⚠️ 该平台为相对时间，精度 ±5 分钟</p>
+
+      <section class="section">
+        <label class="field-label" for="cutoff-input">截止时间</label>
+        <input
+          id="cutoff-input"
+          class="cutoff-input"
+          type="datetime-local"
+          step="60"
+        />
+        <div class="presets">
+          <button class="preset" data-preset="1_hour_ago">1小时前</button>
+          <button class="preset" data-preset="today_midnight">今日0点</button>
+          <button class="preset" data-preset="yesterday_midnight">昨日0点</button>
+        </div>
+      </section>
+
+      <section class="section">
+        <label class="field-label">过滤策略</label>
+        <div class="strategy">
+          <label class="radio"><input type="radio" name="strategy" value="hide" checked /> 隐藏</label>
+          <label class="radio"><input type="radio" name="strategy" value="collapse" /> 折叠</label>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div class="site" id="site">当前站点: —</div>
+        <div class="count" id="count">已过滤: 0 条</div>
+      </footer>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

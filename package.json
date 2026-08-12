@@ -1,0 +1,26 @@
+{
+  "name": "timemachine",
+  "version": "1.0.0",
+  "description": "时光机（TimeMachine）— 浏览器扩展：只看到指定时间点之前发布的帖子",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "tsx test/unit/time.test.ts && tsx test/unit/content.test.ts && tsx test/unit/mismatch.test.ts && tsx test/unit/ths.test.ts && tsx test/unit/adapters-update.test.ts",
+    "test:build": "node scripts/make-test-build.mjs",
+    "package": "node scripts/package-extension.mjs"
+  },
+  "dependencies": {
+    "dayjs": "^1.11.13"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.7.1",
+    "@types/chrome": "^0.0.287",
+    "jsdom": "^30.0.1",
+    "tsx": "^4.23.12",
+    "typescript": "^5.6.3",
+    "vite": "^8.2.1"
+  }
+}

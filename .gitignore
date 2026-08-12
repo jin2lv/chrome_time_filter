@@ -1,0 +1,32 @@
+# 依赖
+node_modules/
+
+# 构建产物（可重新生成，按需可保留 dist 用于调试）
+dist/
+dist-old/
+dist-p2-backup/
+dist-test/
+
+# 打包中间产物
+.store-build/
+artifacts/
+
+# 浏览器调试工具目录（Playwright/ClawBrowser 的浏览器 Profile 数据，含 cookies/同步数据，切勿提交）
+.playwright/
+.playwright-cli/
+
+# 私钥 / 密钥材料（切勿提交！）
+scripts/keys/
+scripts/*.pem
+scripts/*.der
+scripts/*.b64
+*.pem
+*.key
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+.workbuddy/
