@@ -52,10 +52,22 @@ const manifest = defineManifest({
     },
   ],
 
-  permissions: ['storage', 'scripting', 'alarms'],
+  // `activeTab` lets the popup inspect the URL of the tab the user explicitly
+  // invoked it from. Site access itself remains opt-in via optional hosts.
+  permissions: ['activeTab', 'storage', 'scripting', 'alarms'],
   optional_host_permissions: [
     '*://xueqiu.com/*',
     '*://t.10jqka.com.cn/*',
+  ],
+
+  // CRXJS turns the declared content script into a small loader which imports
+  // the actual module at runtime. Those modules must be web-accessible to the
+  // pages that can receive the dynamically registered script.
+  web_accessible_resources: [
+    {
+      resources: ['assets/*'],
+      matches: ['*://xueqiu.com/*', '*://t.10jqka.com.cn/*'],
+    },
   ],
 
   // P2-7：全局快捷键（设置页自定义快捷键 Chrome 限制为修饰键+字母，P2-6 待补）

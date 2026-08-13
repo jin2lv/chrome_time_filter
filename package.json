@@ -8,12 +8,13 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "tsx test/unit/time.test.ts && tsx test/unit/content.test.ts && tsx test/unit/mismatch.test.ts && tsx test/unit/ths.test.ts && tsx test/unit/adapters-update.test.ts",
+    "test": "tsx test/unit/time.test.ts && tsx test/unit/content.test.ts && tsx test/unit/mismatch.test.ts && tsx test/unit/ths.test.ts && tsx test/unit/adapters-update.test.ts && tsx test/unit/popup-auth.test.ts && tsx test/unit/xueqiu-adapter.test.ts && tsx test/unit/xueqiu-backfill.test.ts && tsx test/unit/xueqiu-category.test.ts",
     "test:build": "node scripts/make-test-build.mjs",
     "package": "node scripts/package-extension.mjs"
   },
   "dependencies": {
-    "dayjs": "^1.11.13"
+    "dayjs": "^1.11.13",
+    "lucide": "^1.31.0"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.1",

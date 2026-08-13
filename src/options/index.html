@@ -7,60 +7,119 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <main class="options">
-      <h1>⏳ 时光机设置</h1>
-      <p class="subtitle" id="subtitle">v0.1.0（开发版）</p>
+    <header class="app-header">
+      <div class="header-inner">
+        <div class="brand-mark" aria-hidden="true">⏳</div>
+        <div>
+          <h1>时光机设置</h1>
+          <p class="version" id="subtitle">v0.1.0</p>
+        </div>
+      </div>
+    </header>
 
-      <section>
-        <h2>通用</h2>
-        <label class="row">
-          <span>默认过滤策略</span>
-          <select id="pref-strategy">
-            <option value="hide">隐藏</option>
-            <option value="collapse">折叠</option>
-          </select>
-        </label>
-        <label class="row">
-          <span>角标显示计数</span>
-          <input id="pref-badge" type="checkbox" checked />
-        </label>
-        <label class="row">
-          <span>悬浮提示条（页面右下角，P2-8）</span>
-          <input id="pref-banner" type="checkbox" />
-        </label>
-      </section>
+    <div class="settings-layout">
+      <nav class="settings-nav" aria-label="设置分类">
+        <a href="#general" class="active">通用</a>
+        <a href="#comments">评论过滤</a>
+        <a href="#sites">站点与适配</a>
+        <a href="#advanced">高级</a>
+      </nav>
 
-      <section>
-        <h2>评论过滤（P2-4）</h2>
-        <label class="row">
-          <span>评论无时间戳时的处理</span>
-          <select id="pref-comment-notime">
-            <option value="show">全部显示（推荐）</option>
-            <option value="collapse">默认折叠</option>
-          </select>
-        </label>
-        <p class="desc">帖子详情页评论按自身时间戳独立过滤；无法解析时间戳的评论按此策略处理。</p>
-      </section>
+      <main class="settings-main">
+        <section id="general" class="settings-section">
+          <div class="section-heading">
+            <h2>通用</h2>
+            <p>控制默认过滤方式和页面提示。</p>
+          </div>
+          <div class="setting-list">
+            <label class="setting-row">
+              <span class="setting-copy">
+                <strong>默认过滤策略</strong>
+                <small>首次为站点设置截止时间时使用</small>
+              </span>
+              <select id="pref-strategy">
+                <option value="hide">隐藏</option>
+                <option value="collapse">折叠</option>
+              </select>
+            </label>
+            <label class="setting-row">
+              <span class="setting-copy">
+                <strong>角标显示计数</strong>
+                <small>在扩展图标上显示已过滤条数</small>
+              </span>
+              <span class="switch-control">
+                <input id="pref-badge" type="checkbox" checked />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </label>
+            <label class="setting-row">
+              <span class="setting-copy">
+                <strong>悬浮提示条</strong>
+                <small>在网页右下角显示截止时间与过滤计数</small>
+              </span>
+              <span class="switch-control">
+                <input id="pref-banner" type="checkbox" />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </label>
+          </div>
+        </section>
 
-      <section>
-        <h2>已授权站点</h2>
-        <ul id="permission-list" class="permission-list"></ul>
-        <p class="desc">移除授权后，该站点的过滤将停止生效；再次访问时可在扩展弹窗中重新授权。</p>
-      </section>
+        <section id="comments" class="settings-section">
+          <div class="section-heading">
+            <h2>评论过滤</h2>
+            <p>评论优先按自身时间过滤，无法判断时间时使用下方规则。</p>
+          </div>
+          <div class="setting-list">
+            <label class="setting-row">
+              <span class="setting-copy">
+                <strong>无法解析时间的评论</strong>
+                <small>“全部显示”可以避免误隐藏内容</small>
+              </span>
+              <select id="pref-comment-notime">
+                <option value="show">全部显示（推荐）</option>
+                <option value="collapse">默认折叠</option>
+              </select>
+            </label>
+          </div>
+        </section>
 
-      <section>
-        <h2>适配包</h2>
-        <ul id="adapter-list" class="permission-list"></ul>
-      </section>
+        <section id="sites" class="settings-section">
+          <div class="section-heading">
+            <h2>站点与适配</h2>
+            <p>管理站点访问权限并查看内置适配包。</p>
+          </div>
+          <div class="subsection">
+            <h3>已授权站点</h3>
+            <ul id="permission-list" class="status-list"></ul>
+            <p class="section-note">移除后该站点将停止过滤，再次使用时可从扩展弹窗重新授权。</p>
+          </div>
+          <div class="subsection">
+            <h3>适配包</h3>
+            <ul id="adapter-list" class="status-list"></ul>
+          </div>
+        </section>
 
-      <section>
-        <h2>高级</h2>
-        <label class="row">
-          <span>适配包自动更新（每 12h）</span>
-          <input id="pref-autoupdate" type="checkbox" checked />
-        </label>
-      </section>
-    </main>
+        <section id="advanced" class="settings-section">
+          <div class="section-heading">
+            <h2>高级</h2>
+            <p>适配包更新失败时会自动使用扩展内置版本。</p>
+          </div>
+          <div class="setting-list">
+            <label class="setting-row">
+              <span class="setting-copy">
+                <strong>自动更新适配包</strong>
+                <small>每 12 小时检查一次平台规则更新</small>
+              </span>
+              <span class="switch-control">
+                <input id="pref-autoupdate" type="checkbox" checked />
+                <span class="switch-track" aria-hidden="true"></span>
+              </span>
+            </label>
+          </div>
+        </section>
+      </main>
+    </div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

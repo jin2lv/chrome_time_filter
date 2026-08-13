@@ -14,6 +14,7 @@
  * - 开关（按 Tab 独立，新 Tab 默认开启）与时间变更消息处理
  */
 import { AdapterManager } from '../adapters'
+import { VirtualPaginationController, type PostDecision } from './virtual-pagination'
 import { extractDomain, getPrefs, getTimeSettings } from '../shared/storage'
 import { extractTimestampText, parseTimestamp } from '../shared/time'
 import type {
@@ -35,6 +36,9 @@ let unparseableCount = 0
 let observer: MutationObserver | null = null
 let processed = new WeakSet<Element>()
 let mismatchChecked = false
+let virtualPagination: VirtualPaginationController | null = null
+let virtualContextValue = ''
+let virtualRestartTimer: ReturnType<typeof setTimeout> | null = null
 
 const FILTERED_FLAG = 'tmFiltered' // dataset camelCase 键（含连字符会抛 SyntaxError）
 const FILTERED_ATTR = 'data-tm-filtered' // 对应 DOM 属性（querySelector 用）
@@ -73,6 +77,23 @@ function applyStrategy(el: HTMLElement): void {
   }
 }
 
+function decidePost(el: HTMLElement): PostDecision {
+  if (!adapter || !settings || !enabled) return 'include'
+  const text = extractTimestampText(
+    el,
+    adapter.timestamp.selector,
+    adapter.timestamp.attr,
+    adapter.timestamp.date_attr,
+    adapter.timestamp.strip_pattern,
+  )
+  if (!text) return 'unparseable'
+  const anchor = el.dataset.tmAnchor ? Number(el.dataset.tmAnchor) : Date.now()
+  if (!el.dataset.tmAnchor) el.dataset.tmAnchor = String(anchor)
+  const parsed = parseTimestamp(text, adapter, anchor)
+  if (!parsed) return 'unparseable'
+  return shouldFilter(parsed.timestamp) ? 'filtered' : 'include'
+}
+
 function hide(el: HTMLElement): void {
   el.style.display = 'none'
 }
@@ -101,28 +122,13 @@ function processPost(el: HTMLElement): void {
   processed.add(el)
   if (el.dataset[FILTERED_FLAG] === '1') return
 
-  const text = extractTimestampText(
-    el,
-    adapter.timestamp.selector,
-    adapter.timestamp.attr,
-    adapter.timestamp.date_attr,
-    adapter.timestamp.strip_pattern,
-  )
-  if (!text) {
+  const decision = decidePost(el)
+  if (decision === 'unparseable') {
     unparseableCount++
     report()
     return
   }
-  // 时间锚定：首次检测到帖子的时刻为锚点，写入 dataset 以便 reapplyAll 后仍使用原锚点
-  const anchor = el.dataset.tmAnchor ? Number(el.dataset.tmAnchor) : Date.now()
-  if (!el.dataset.tmAnchor) el.dataset.tmAnchor = String(anchor)
-  const parsed = parseTimestamp(text, adapter, anchor)
-  if (!parsed) {
-    unparseableCount++
-    report()
-    return
-  }
-  if (shouldFilter(parsed.timestamp)) {
+  if (decision === 'filtered') {
     filteredCount++
     el.dataset[FILTERED_FLAG] = '1'
     applyStrategy(el)
@@ -173,8 +179,11 @@ function processComment(el: HTMLElement): void {
 /** 扫描页面已有帖子 + 评论（初始化 / 重应用） */
 function scanExisting(): void {
   if (!adapter) return
-  const posts = document.querySelectorAll(adapter.post_selectors.join(','))
-  posts.forEach((el) => processPost(el as HTMLElement))
+  const virtualStarted = startVirtualPagination()
+  if (!virtualStarted) {
+    const posts = document.querySelectorAll(adapter.post_selectors.join(','))
+    posts.forEach((el) => processPost(el as HTMLElement))
+  }
   if (adapter.comment_selectors?.length) {
     const comments = document.querySelectorAll(adapter.comment_selectors.join(','))
     comments.forEach((el) => processComment(el as HTMLElement))
@@ -184,6 +193,9 @@ function scanExisting(): void {
 /** 重应用（时间设置变化 / 开关切换）：重置后全量重扫 */
 function reapplyAll(): void {
   if (!adapter) return
+  virtualPagination?.destroy()
+  virtualPagination = null
+  virtualContextValue = ''
   // 恢复所有标记元素
   document
     .querySelectorAll(`[${FILTERED_ATTR}="1"]`)
@@ -200,6 +212,50 @@ function reapplyAll(): void {
   unparseableCount = 0
   scanExisting()
   report()
+}
+
+// ---------- 配置驱动虚拟分页 ----------
+
+function startVirtualPagination(): boolean {
+  const config = adapter?.virtual_pagination
+  const hasTimeBoundary =
+    settings?.mode === 'cutoff'
+      ? settings.cutoff !== null
+      : settings?.window?.start != null && settings.window.end != null
+  if (!config || !settings || !enabled || !hasTimeBoundary) return false
+  if (virtualPagination?.isActive()) return true
+  virtualPagination = VirtualPaginationController.create({
+    config,
+    postSelector: adapter!.post_selectors.join(','),
+    decide: decidePost,
+    onDecision: (decision) => {
+      if (decision === 'filtered') filteredCount++
+      if (decision === 'unparseable') unparseableCount++
+      report()
+    },
+  })
+  virtualContextValue = config.context_selector
+    ? document.querySelector(config.context_selector)?.textContent?.trim() ?? ''
+    : ''
+  void virtualPagination?.start()
+  return virtualPagination !== null
+}
+
+function scheduleVirtualContextRestart(): void {
+  if (virtualRestartTimer) clearTimeout(virtualRestartTimer)
+  virtualRestartTimer = setTimeout(() => {
+    virtualRestartTimer = null
+    reapplyAll()
+  }, adapter?.virtual_pagination?.wait_ms ?? 250)
+}
+
+function virtualContextChanged(): boolean {
+  const selector = adapter?.virtual_pagination?.context_selector
+  if (!selector || !virtualPagination?.isActive()) return false
+  const current = document.querySelector(selector)?.textContent?.trim() ?? ''
+  if (!current || !virtualContextValue || current === virtualContextValue) return false
+  scheduleVirtualContextRestart()
+  return true
 }
 
 function report(): void {
@@ -263,11 +319,12 @@ function updateBanner(): void {
 function startObserver(): void {
   if (!adapter || observer) return
   observer = new MutationObserver((mutations) => {
+    if (virtualContextChanged()) return
     for (const m of mutations) {
       for (const node of m.addedNodes) {
         if (!(node instanceof HTMLElement)) continue
         if (matchesPostSelectors(node)) {
-          processPost(node)
+          if (!virtualPagination?.isActive()) processPost(node)
           continue
         }
         if (matchesCommentSelectors(node)) {
@@ -276,7 +333,7 @@ function startObserver(): void {
         }
         if (!node.querySelector) continue
         const postSel = adapter!.post_selectors.join(',')
-        if (postSel) {
+        if (postSel && !virtualPagination?.isActive()) {
           node.querySelectorAll(postSel).forEach((sub) => processPost(sub as HTMLElement))
         }
         const cmtSel = adapter!.comment_selectors?.join(',')

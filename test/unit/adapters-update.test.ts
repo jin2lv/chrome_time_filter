@@ -51,6 +51,11 @@ const alarmsCreated: unknown[] = []
     getRegisteredContentScripts: async () => [],
     registerContentScripts: async () => {},
   },
+  permissions: {
+    getAll: async () => ({ origins: ['*://xueqiu.com/*'] }),
+    contains: async ({ origins }: { origins: string[] }) => origins.includes('*://xueqiu.com/*'),
+    onAdded: { addListener: () => {} },
+  },
   alarms: {
     create: async (name: string, opts: unknown) => { alarmsCreated.push({ name, opts }) },
     onAlarm: { addListener: () => {} },

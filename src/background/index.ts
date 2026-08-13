@@ -21,11 +21,10 @@ const REMOTE_ADAPTERS_URL = 'https://cdn.jsdelivr.net/gh/org/repo@latest/adapter
 const ADAPTERS_ALARM = 'adapters-update'
 const ADAPTERS_INTERVAL_MINUTES = 12 * 60 // 每 12h
 
-/** 目标平台域名（与 optional_host_permissions 一致，需保持同步） */
+/** 目标平台域名（必须与 optional_host_permissions 严格保持同步） */
 const TARGET_MATCHES = [
   '*://xueqiu.com/*',
   '*://t.10jqka.com.cn/*',
-  '*://weibo.com/*',
 ]
 
 const CONTENT_SCRIPT_ID = 'tm-main'
@@ -43,10 +42,21 @@ function getContentScriptJs(): string[] {
 /** 注册（或确保已注册）content script；host 授权后才实际注入 */
 async function ensureContentScriptRegistered(): Promise<void> {
   try {
-    const existing = await chrome.scripting.getRegisteredContentScripts({
-      ids: [CONTENT_SCRIPT_ID],
-    })
-    if (existing.length > 0) return
+    const matches: string[] = []
+    for (const match of TARGET_MATCHES) {
+      if (await chrome.permissions.contains({ origins: [match] })) matches.push(match)
+    }
+    const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [CONTENT_SCRIPT_ID] })
+    if (matches.length === 0) {
+      if (existing.length > 0) {
+        await chrome.scripting.unregisterContentScripts({ ids: [CONTENT_SCRIPT_ID] })
+      }
+      return
+    }
+    if (existing.length > 0) {
+      await chrome.scripting.updateContentScripts([{ id: CONTENT_SCRIPT_ID, matches }])
+      return
+    }
     const js = getContentScriptJs()
     if (js.length === 0) {
       console.warn('[时光机] manifest 缺少 content_scripts 声明，无法注册')
@@ -55,16 +65,17 @@ async function ensureContentScriptRegistered(): Promise<void> {
     await chrome.scripting.registerContentScripts([
       {
         id: CONTENT_SCRIPT_ID,
-        matches: TARGET_MATCHES,
-        js: js.map((p) => chrome.runtime.getURL(p)),
+        matches,
+        // registerContentScripts expects extension-relative file paths, as
+        // returned by runtime.getManifest(), not chrome-extension:// URLs.
+        js,
         runAt: 'document_idle',
         persistAcrossSessions: true,
       },
     ])
     console.log('[时光机] 动态 content script 已注册:', js)
   } catch (e) {
-    // 重复注册等竞态：静默
-    console.warn('[时光机] 注册 content script 失败', e)
+    console.warn('[时光机] 注册 content script 失败:', (e as Error).message)
   }
 }
 
@@ -227,6 +238,13 @@ chrome.runtime.onMessage.addListener((msg, sender, _sendResponse) => {
     // P1-6：开启彩色图标 / 关闭灰色图标
     setTabIcon(tabId, Boolean(msg.enabled))
   }
+})
+
+// Popup grants an optional host permission after the worker may have started.
+// Re-run the idempotent registration so the newly granted site is immediately
+// eligible for content-script injection after its next page load.
+chrome.permissions?.onAdded?.addListener(() => {
+  void ensureContentScriptRegistered()
 })
 
 console.log('[时光机] Service Worker 已启动')

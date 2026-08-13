@@ -89,5 +89,64 @@ function validatePlatform(pl: PlatformAdapter): string[] {
   if (!Array.isArray(pl.quick_presets)) {
     errs.push('quick_presets 必须是数组')
   }
+  if (pl.virtual_pagination !== undefined) {
+    const virtual = pl.virtual_pagination
+    if (!virtual || typeof virtual !== 'object') {
+      errs.push('virtual_pagination 必须是对象')
+    } else {
+      const selectors: Array<[string, unknown]> = [
+        ['list_selector', virtual.list_selector],
+        ['source_link_selector', virtual.source_link_selector],
+        ['native_pagination_selector', virtual.native_pagination_selector],
+        ['next_selector', virtual.next_selector],
+        ['active_page_selector', virtual.active_page_selector],
+      ]
+      selectors.forEach(([name, value]) => {
+        if (typeof value !== 'string' || !value) {
+          errs.push(`virtual_pagination.${name} 必须是非空字符串`)
+        }
+      })
+      if (
+        virtual.context_selector !== undefined &&
+        (typeof virtual.context_selector !== 'string' || !virtual.context_selector)
+      ) {
+        errs.push('virtual_pagination.context_selector 必须是非空字符串')
+      }
+      if (!virtual.post_id || typeof virtual.post_id !== 'object') {
+        errs.push('virtual_pagination.post_id 必须是对象')
+      } else {
+        if (typeof virtual.post_id.selector !== 'string' || !virtual.post_id.selector) {
+          errs.push('virtual_pagination.post_id.selector 必须是非空字符串')
+        }
+        if (typeof virtual.post_id.attr !== 'string' || !virtual.post_id.attr) {
+          errs.push('virtual_pagination.post_id.attr 必须是非空字符串')
+        }
+      }
+      if (virtual.first_page !== undefined) {
+        if (!virtual.first_page || typeof virtual.first_page !== 'object') {
+          errs.push('virtual_pagination.first_page 必须是对象')
+        } else {
+          if (
+            typeof virtual.first_page.input_selector !== 'string' ||
+            !virtual.first_page.input_selector
+          ) {
+            errs.push('virtual_pagination.first_page.input_selector 必须是非空字符串')
+          }
+          if (typeof virtual.first_page.value !== 'string' || !virtual.first_page.value) {
+            errs.push('virtual_pagination.first_page.value 必须是非空字符串')
+          }
+        }
+      }
+      if (!Number.isInteger(virtual.page_size) || virtual.page_size < 1) {
+        errs.push('virtual_pagination.page_size 必须是正整数')
+      }
+      if (!Number.isInteger(virtual.max_source_pages) || virtual.max_source_pages < 1) {
+        errs.push('virtual_pagination.max_source_pages 必须是正整数')
+      }
+      if (!Number.isFinite(virtual.wait_ms) || virtual.wait_ms < 0) {
+        errs.push('virtual_pagination.wait_ms 必须是非负数')
+      }
+    }
+  }
   return errs
 }

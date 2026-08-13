@@ -10,12 +10,18 @@
     <div id="app" class="popup">
       <header class="header">
         <span class="logo">⏳ 时光机</span>
-        <button id="toggle-btn" class="toggle" disabled>—</button>
+        <div class="header-actions">
+          <button id="settings-btn" class="icon-btn" type="button" title="打开设置" aria-label="打开设置">
+            <i data-lucide="settings" aria-hidden="true"></i>
+          </button>
+          <button id="toggle-btn" class="toggle" disabled>—</button>
+        </div>
       </header>
 
       <div id="auth-area" hidden>
         <p class="auth-text">此站点未授权，点击授权后即可使用</p>
         <button id="auth-btn" class="preset">授权此站点</button>
+        <p id="auth-status" class="auth-status" role="status" hidden></p>
       </div>
 
       <p id="precision-hint" class="precision-hint" hidden>⚠️ 该平台为相对时间，精度 ±5 分钟</p>

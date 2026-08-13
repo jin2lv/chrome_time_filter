@@ -49,6 +49,16 @@ async function init(): Promise<void> {
   $('subtitle').textContent = `v${chrome.runtime.getManifest().version}`
   renderAdapters()
   void renderPermissions()
+  bindNavigation()
+}
+
+function bindNavigation(): void {
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('.settings-nav a')]
+  links.forEach((link) => {
+    link.addEventListener('click', () => {
+      links.forEach((item) => item.classList.toggle('active', item === link))
+    })
+  })
 }
 
 /** 内置适配包列表 */
@@ -57,7 +67,12 @@ function renderAdapters(): void {
   ul.innerHTML = ''
   for (const p of BUILTIN_VERSIONS) {
     const li = document.createElement('li')
-    li.textContent = `${p.name} 适配包 v${p.version}（内置）`
+    const name = document.createElement('span')
+    name.textContent = `${p.name}适配包`
+    const version = document.createElement('span')
+    version.className = 'version-tag'
+    version.textContent = `v${p.version} · 内置`
+    li.append(name, version)
     ul.appendChild(li)
   }
 }

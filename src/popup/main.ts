@@ -11,6 +11,7 @@
 import { AdapterManager } from '../adapters'
 import { extractDomain, getPrefs, getTimeSettings, setTimeSettings } from '../shared/storage'
 import type { ContentState, TimeSettings } from '../shared/types'
+import { createIcons, Settings } from 'lucide'
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id)
@@ -25,10 +26,21 @@ const toggleBtn = $<HTMLButtonElement>('toggle-btn')
 const siteEl = $<HTMLDivElement>('site')
 const countEl = $<HTMLDivElement>('count')
 const authArea = $<HTMLDivElement>('auth-area')
+const authBtn = $<HTMLButtonElement>('auth-btn')
+const authStatus = $<HTMLParagraphElement>('auth-status')
+const settingsBtn = $<HTMLButtonElement>('settings-btn')
+
+createIcons({ icons: { Settings } })
 
 let domain = ''
 let tabId: number | undefined
 let state: ContentState = { enabled: true, hasSettings: false, hasAdapter: false, filteredCount: 0, unparseableCount: 0 }
+
+settingsBtn.addEventListener('click', () => {
+  void chrome.runtime.openOptionsPage()
+})
+
+const CONTENT_SCRIPT_ID = 'tm-main'
 
 /** 选择"目标站点 tab"：优先当前活动 tab；若为扩展页面（如 popup 被钉住）则回退到最近的非扩展 tab */
 async function pickTargetTab(): Promise<chrome.tabs.Tab | undefined> {
@@ -71,12 +83,15 @@ async function init(): Promise<void> {
     authArea.hidden = false
     toggleBtn.disabled = true
     cutoffInput.disabled = true
-    document.querySelectorAll('.preset').forEach((b) => (b as HTMLButtonElement).disabled = true)
-    authArea.querySelector('button')?.addEventListener('click', requestAuth)
+    document
+      .querySelectorAll<HTMLButtonElement>('.preset[data-preset]')
+      .forEach((button) => (button.disabled = true))
+    authBtn.addEventListener('click', requestAuth)
     return
   }
 
   // 已授权：读时间设置 + 查询内容脚本状态
+  if (isTarget) await ensureContentScriptActive()
   const settings = await getTimeSettings(domain)
   if (settings?.cutoff != null) {
     cutoffInput.value = toLocalInputValue(new Date(settings.cutoff))
@@ -92,13 +107,71 @@ async function isAuthorized(d: string): Promise<boolean> {
 }
 
 async function requestAuth(): Promise<void> {
-  const granted = await chrome.permissions.request({ origins: [`*://${domain}/*`] })
-  if (granted) {
-    authArea.hidden = true
+  authBtn.disabled = true
+  setAuthStatus('正在请求 Chrome 授权…')
+  try {
+    const granted = await chrome.permissions.request({ origins: [`*://${domain}/*`] })
+    if (!granted) {
+      setAuthStatus('浏览器未授予该站点权限，请重试。', true)
+      return
+    }
+    const verified = await isAuthorized(domain)
+    if (!verified) {
+      setAuthStatus('Chrome 未确认站点权限，请重新加载扩展后重试。', true)
+      return
+    }
+    await ensureContentScriptActive()
+    setAuthStatus('已授权，过滤脚本已启动。')
     cutoffInput.disabled = false
-    document.querySelectorAll('.preset').forEach((b) => (b as HTMLButtonElement).disabled = false)
+    document
+      .querySelectorAll<HTMLButtonElement>('.preset[data-preset]')
+      .forEach((button) => (button.disabled = false))
     bindEvents()
+  } catch (error) {
+    const detail = error instanceof Error ? `：${error.message}` : ''
+    setAuthStatus(`授权请求失败${detail}`, true)
+  } finally {
+    authBtn.disabled = false
   }
+}
+
+function setAuthStatus(message: string, isError = false): void {
+  authStatus.textContent = message
+  authStatus.hidden = false
+  authStatus.classList.toggle('error', isError)
+}
+
+function getContentScriptJs(): string[] {
+  return chrome.runtime.getManifest().content_scripts?.[0]?.js ?? []
+}
+
+async function ensureContentScriptActive(): Promise<void> {
+  if (tabId === undefined) return
+
+  try {
+    const current = await chrome.tabs.sendMessage(tabId, { type: 'QUERY_STATE' })
+    if (current) return
+  } catch {
+    // The current page has not received the content script yet.
+  }
+
+  const js = getContentScriptJs()
+  if (js.length === 0) throw new Error('扩展构建中缺少内容脚本')
+  const match = `*://${domain}/*`
+  const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [CONTENT_SCRIPT_ID] })
+
+  if (existing.length > 0) {
+    const matches = [...new Set([...(existing[0].matches ?? []), match])]
+    await chrome.scripting.updateContentScripts([
+      { id: CONTENT_SCRIPT_ID, matches, js, runAt: 'document_idle', persistAcrossSessions: true },
+    ])
+  } else {
+    await chrome.scripting.registerContentScripts([
+      { id: CONTENT_SCRIPT_ID, matches: [match], js, runAt: 'document_idle', persistAcrossSessions: true },
+    ])
+  }
+
+  await chrome.scripting.executeScript({ target: { tabId }, files: js })
 }
 
 /** 向当前 Tab 的 Content Script 查询状态（未注入时 catch 降级） */
@@ -126,7 +199,7 @@ function bindEvents(): void {
   })
 
   cutoffInput.addEventListener('change', () => void saveCutoff())
-  document.querySelectorAll<HTMLButtonElement>('.preset').forEach((btn) => {
+  document.querySelectorAll<HTMLButtonElement>('.preset[data-preset]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const ts = resolvePreset(btn.dataset.preset ?? '')
       cutoffInput.value = toLocalInputValue(new Date(ts))

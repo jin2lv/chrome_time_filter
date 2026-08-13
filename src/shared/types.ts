@@ -66,6 +66,27 @@ export interface PlatformAdapter {
   comment_timestamp_selector?: string
   /** 快捷预设 */
   quick_presets: { label: string; value: string }[]
+  /** 可选虚拟分页：跨原生页面按需聚合符合时间条件的帖子 */
+  virtual_pagination?: {
+    list_selector: string
+    post_id: {
+      selector: string
+      attr: string
+    }
+    source_link_selector: string
+    /** 列表类别/作用域的当前值；变化时重建虚拟分页会话 */
+    context_selector?: string
+    native_pagination_selector: string
+    next_selector: string
+    active_page_selector: string
+    first_page?: {
+      input_selector: string
+      value: string
+    }
+    page_size: number
+    max_source_pages: number
+    wait_ms: number
+  }
 }
 
 /** Popup/Content Script/Background 间消息 */

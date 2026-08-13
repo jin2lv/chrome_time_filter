@@ -1,5 +1,5 @@
 {
-  "version": "0.1.1",
+  "version": "0.2.0",
   "platforms": [
     {
       "name": "雪球",
@@ -8,6 +8,7 @@
       "timestamp": {
         "selector": "a.date-and-source",
         "type": "relative",
+        "strip_pattern": "^修改于",
         "patterns": [
           { "regex": "^(\\d+)分钟前", "unit": "minute", "multiplier": 1 },
           { "regex": "^(\\d+)小时前", "unit": "hour", "multiplier": 1 },
@@ -23,7 +24,26 @@
         { "label": "今日0点", "value": "today_midnight" },
         { "label": "昨日0点", "value": "yesterday_midnight" }
       ],
-      "notes": "DOM 取证于 2026-08-11：个股页信息流 article.timeline__item，时间戳 a.date-and-source 为相对时间（'9分钟前· 来自iPhone'，需按 '·' 拆分）。详情页评论 .comment__item（父 .comment__list），时间戳 span.time 格式 '今天 08:17 · 江苏'（今天/昨天+HH:mm，按 '·' 拆分）。"
+      "virtual_pagination": {
+        "list_selector": ".stock-timeline > .status-list",
+        "post_id": {
+          "selector": "a.date-and-source",
+          "attr": "data-id"
+        },
+        "source_link_selector": "a.date-and-source",
+        "context_selector": ".stock-timeline-tabs a.active",
+        "native_pagination_selector": ".stock-timeline > .pagination",
+        "next_selector": ".pagination__next",
+        "active_page_selector": ".pagination a.active",
+        "first_page": {
+          "input_selector": ".pagination input",
+          "value": "1"
+        },
+        "page_size": 10,
+        "max_source_pages": 200,
+        "wait_ms": 300
+      },
+      "notes": "DOM 取证于 2026-08-13：个股页全部/讨论/投资者关系/交易/资讯/公告六类共用 .stock-timeline > .status-list、article.timeline__item、a.date-and-source[data-id] 与原生分页；类别由 .stock-timeline-tabs a.active 标识，切换类别时重建独立虚拟分页会话。编辑帖格式为 '修改于MM-DD HH:mm'。虚拟分页跨原生页按需聚合，每虚拟页 10 条，单次会话最多扫描 200 个原生页。详情页评论 .comment__item，时间戳 span.time。"
     }
   ]
 }
