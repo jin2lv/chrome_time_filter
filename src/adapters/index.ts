@@ -2,7 +2,7 @@
  * AdapterManager：按域名匹配适配包（P1 完善，P2-5 支持远程热更新）
  *
  * 职责：
- * - 按域名匹配适配包（先远程热更新包，后内置兜底）
+ * - 按域名匹配适配包（远程与内置按版本择新）
  * - 加载前 Schema 校验，脏配置丢弃
  * - 提供 getAdapter(domain) / hasAdapter(domain) / getPackageFor(domain) API
  * - loadRemoteFromStorage：content script 启动时加载 storage 中已更新的远程包
@@ -20,15 +20,12 @@ const BUILTIN_ADAPTERS: Adapter[] = [xueqiuAdapter as unknown as Adapter, thsAda
 class AdapterManagerImpl {
   private remoteAdapters: Adapter[] = []
 
-  /** 匹配单个平台适配包：先远程（P2-5 热更新），后内置 */
+  /** 匹配单个平台适配包：同一域名使用版本最高的有效包 */
   getAdapter(domain: string): PlatformAdapter | null {
-    for (const pkg of this.allAdapters()) {
-      const found = pkg.platforms.find((p) =>
-        p.domains.some((d) => domain === d || domain.endsWith('.' + d)),
-      )
-      if (found) return found
-    }
-    return null
+    const pkg = this.getPackageFor(domain)
+    return pkg?.platforms.find((platform) =>
+      platform.domains.some((candidate) => domain === candidate || domain.endsWith('.' + candidate)),
+    ) ?? null
   }
 
   /** 是否存在某平台的适配包 */
@@ -38,10 +35,14 @@ class AdapterManagerImpl {
 
   /** 适配包完整包体（供远程更新对比版本号使用） */
   getPackageFor(domain: string): Adapter | null {
-    for (const pkg of this.allAdapters()) {
-      if (pkg.platforms.some((p) => p.domains.includes(domain))) return pkg
-    }
-    return null
+    const matches = [...this.remoteAdapters, ...BUILTIN_ADAPTERS].filter((pkg) =>
+      pkg.platforms.some((platform) =>
+        platform.domains.some((candidate) => domain === candidate || domain.endsWith('.' + candidate)),
+      ),
+    )
+    return matches.reduce<Adapter | null>((newest, pkg) =>
+      !newest || compareVersions(pkg.version, newest.version) > 0 ? pkg : newest
+    , null)
   }
 
   /** (P2-5) 覆盖远程适配包：批量校验，非法条目丢弃 */
@@ -70,9 +71,6 @@ class AdapterManagerImpl {
     }
   }
 
-  private allAdapters(): Adapter[] {
-    return [...this.remoteAdapters, ...BUILTIN_ADAPTERS]
-  }
 }
 
 export const AdapterManager = new AdapterManagerImpl()

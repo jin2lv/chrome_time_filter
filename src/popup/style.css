@@ -14,7 +14,7 @@ body {
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Microsoft YaHei', sans-serif;
   font-size: 13px;
-  width: 320px;
+  width: 352px;
   background: var(--bg, #fff);
   color: var(--fg, #1f2329);
 }
@@ -118,7 +118,7 @@ body {
   margin-bottom: 6px;
 }
 
-.cutoff-input {
+.time-input {
   width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--border);
@@ -126,6 +126,87 @@ body {
   background: var(--card);
   color: var(--fg);
   font-size: 13px;
+}
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card);
+}
+
+.mode-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mode-switch span {
+  display: block;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  text-align: center;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.mode-switch input:checked + span {
+  color: #fff;
+  background: var(--accent);
+}
+
+.window-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.window-grid .field-label {
+  margin-bottom: 4px;
+}
+
+.field-error {
+  margin-top: 7px;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.diagnostics {
+  margin: -2px 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+}
+
+.diagnostics-toggle {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+#diagnostics-list {
+  margin: 7px 0 0 18px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.scope-status {
+  margin-bottom: 10px;
+  padding: 7px 9px;
+  border-left: 3px solid #d59b00;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .presets {
@@ -148,6 +229,12 @@ body {
 .preset:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.preset:disabled,
+.time-input:disabled {
+  opacity: .55;
+  cursor: not-allowed;
 }
 
 .strategy {
@@ -201,4 +288,11 @@ body {
   border-top: 1px solid var(--border);
   font-size: 12px;
   color: var(--muted);
+  gap: 10px;
+}
+
+.site,
+.count {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

@@ -18,10 +18,13 @@ import { VirtualPaginationController, type PostDecision } from './virtual-pagina
 import { extractDomain, getPrefs, getTimeSettings } from '../shared/storage'
 import { extractTimestampText, parseTimestamp } from '../shared/time'
 import type {
+  ContentCompleteness,
   ContentState,
   PlatformAdapter,
   RuntimeMessage,
+  TimeDiagnostic,
   TimeSettings,
+  ScanProgress,
 } from '../shared/types'
 
 // ---------- 状态（按 Tab 实例，不持久化）----------
@@ -39,6 +42,13 @@ let mismatchChecked = false
 let virtualPagination: VirtualPaginationController | null = null
 let virtualContextValue = ''
 let virtualRestartTimer: ReturnType<typeof setTimeout> | null = null
+let virtualTransitionActive = false
+let virtualTransitionId = 0
+let feedContextValue = ''
+let feedRestartTimer: ReturnType<typeof setTimeout> | null = null
+let completeness: ContentCompleteness = 'complete'
+let diagnostics: TimeDiagnostic[] = []
+let scanProgress: ScanProgress | undefined
 
 const FILTERED_FLAG = 'tmFiltered' // dataset camelCase 键（含连字符会抛 SyntaxError）
 const FILTERED_ATTR = 'data-tm-filtered' // 对应 DOM 属性（querySelector 用）
@@ -85,12 +95,20 @@ function decidePost(el: HTMLElement): PostDecision {
     adapter.timestamp.attr,
     adapter.timestamp.date_attr,
     adapter.timestamp.strip_pattern,
+    adapter.timestamp.date_text_selector,
+    adapter.timestamp.date_text_scope_selector,
   )
-  if (!text) return 'unparseable'
+  if (!text) {
+    addDiagnostic('post', '未找到时间元素')
+    return 'unparseable'
+  }
   const anchor = el.dataset.tmAnchor ? Number(el.dataset.tmAnchor) : Date.now()
   if (!el.dataset.tmAnchor) el.dataset.tmAnchor = String(anchor)
   const parsed = parseTimestamp(text, adapter, anchor)
-  if (!parsed) return 'unparseable'
+  if (!parsed) {
+    addDiagnostic('post', text)
+    return 'unparseable'
+  }
   return shouldFilter(parsed.timestamp) ? 'filtered' : 'include'
 }
 
@@ -146,11 +164,15 @@ function processComment(el: HTMLElement): void {
 
   const text = extractTimestampText(el, adapter.comment_timestamp_selector)
   if (!text) {
+    addDiagnostic('comment', '未找到时间元素')
+    unparseableCount++
     // 无时间戳 → 按回退策略（默认全部显示；'collapse' 时折叠）
     if (commentNoTime === 'collapse') {
       filteredCount++
       el.dataset[FILTERED_FLAG] = '1'
       applyStrategy(el)
+      report()
+    } else {
       report()
     }
     return
@@ -160,10 +182,14 @@ function processComment(el: HTMLElement): void {
   if (!el.dataset.tmAnchor) el.dataset.tmAnchor = String(anchor)
   const parsed = parseTimestamp(text, adapter, anchor)
   if (!parsed) {
+    addDiagnostic('comment', text)
+    unparseableCount++
     if (commentNoTime === 'collapse') {
       filteredCount++
       el.dataset[FILTERED_FLAG] = '1'
       applyStrategy(el)
+      report()
+    } else {
       report()
     }
     return
@@ -193,6 +219,10 @@ function scanExisting(): void {
 /** 重应用（时间设置变化 / 开关切换）：重置后全量重扫 */
 function reapplyAll(): void {
   if (!adapter) return
+  if (virtualRestartTimer) clearTimeout(virtualRestartTimer)
+  virtualRestartTimer = null
+  virtualTransitionActive = false
+  virtualTransitionId++
   virtualPagination?.destroy()
   virtualPagination = null
   virtualContextValue = ''
@@ -210,6 +240,12 @@ function reapplyAll(): void {
   processed = new WeakSet()
   filteredCount = 0
   unparseableCount = 0
+  diagnostics = []
+  scanProgress = undefined
+  feedContextValue = currentFeedContext()
+  completeness = feedContextValue
+    ? adapter.feed_context?.completeness ?? 'loaded-only'
+    : 'complete'
   scanExisting()
   report()
 }
@@ -224,6 +260,10 @@ function startVirtualPagination(): boolean {
       : settings?.window?.start != null && settings.window.end != null
   if (!config || !settings || !enabled || !hasTimeBoundary) return false
   if (virtualPagination?.isActive()) return true
+  virtualContextValue = config.context_selector
+    ? document.querySelector(config.context_selector)?.textContent?.trim() ?? ''
+    : ''
+  if (config.empty_selector && document.querySelector(config.empty_selector)) return false
   virtualPagination = VirtualPaginationController.create({
     config,
     postSelector: adapter!.post_selectors.join(','),
@@ -233,29 +273,128 @@ function startVirtualPagination(): boolean {
       if (decision === 'unparseable') unparseableCount++
       report()
     },
+    onStateChange: (progress) => {
+      scanProgress = progress
+      completeness = progress.state === 'loading'
+        ? 'scanning'
+        : progress.state === 'exhausted'
+          ? 'exhausted'
+          : progress.state === 'error'
+            ? 'error'
+            : 'complete'
+      report()
+    },
   })
-  virtualContextValue = config.context_selector
-    ? document.querySelector(config.context_selector)?.textContent?.trim() ?? ''
-    : ''
   void virtualPagination?.start()
   return virtualPagination !== null
 }
 
-function scheduleVirtualContextRestart(): void {
+function virtualPaginationDomReady(): boolean {
+  const config = adapter?.virtual_pagination
+  const hasTimeBoundary = settings?.mode === 'cutoff'
+    ? settings.cutoff !== null
+    : settings?.window?.start != null && settings.window.end != null
+  if (!config || !settings || !enabled || !hasTimeBoundary) return false
+  if (config.empty_selector && document.querySelector(config.empty_selector)) return false
+  return !!document.querySelector(config.list_selector)
+    && !!document.querySelector(config.native_pagination_selector)
+}
+
+function virtualSourceSignature(): string {
+  const config = adapter?.virtual_pagination
+  if (!config) return ''
+  const list = document.querySelector(config.list_selector)
+  return [...(list?.querySelectorAll(config.post_id.selector) ?? [])]
+    .map((element) => element.getAttribute(config.post_id.attr) ?? '')
+    .join('|')
+}
+
+function scheduleVirtualContextRestart(expectedContext = '', domAlreadyChanged = false): void {
+  const config = adapter?.virtual_pagination
+  if (!config) return
   if (virtualRestartTimer) clearTimeout(virtualRestartTimer)
-  virtualRestartTimer = setTimeout(() => {
-    virtualRestartTimer = null
-    reapplyAll()
-  }, adapter?.virtual_pagination?.wait_ms ?? 250)
+  const transitionId = ++virtualTransitionId
+  const previousContext = virtualContextValue
+  const previousList = document.querySelector(config.list_selector)
+  const previousPagination = document.querySelector(config.native_pagination_selector)
+  const previousEmpty = config.empty_selector
+    ? document.querySelector(config.empty_selector)
+    : null
+  const previousSignature = virtualSourceSignature()
+  const stableWait = config.context_wait_ms ?? config.wait_ms ?? 250
+  const deadline = Date.now() + Math.max(8000, stableWait * 4)
+  let candidateKey = ''
+  let candidateSince = 0
+  virtualTransitionActive = true
+  // 旧会话若继续扫描，会在站点切换类别时点击已经过期的原生分页。
+  virtualPagination?.destroy()
+  virtualPagination = null
+  scanProgress = undefined
+
+  const poll = (): void => {
+    if (transitionId !== virtualTransitionId) return
+    const currentContext = config.context_selector
+      ? document.querySelector(config.context_selector)?.textContent?.trim() ?? ''
+      : ''
+    const contextReady = expectedContext
+      ? currentContext === expectedContext
+      : !!currentContext && currentContext !== previousContext
+    const empty = config.empty_selector
+      ? document.querySelector(config.empty_selector)
+      : null
+    const list = document.querySelector(config.list_selector)
+    const pagination = document.querySelector(config.native_pagination_selector)
+    const signature = virtualSourceSignature()
+    const nativeChanged = domAlreadyChanged
+      || list !== previousList
+      || pagination !== previousPagination
+      || signature !== previousSignature
+    const emptyChanged = domAlreadyChanged || empty !== previousEmpty
+    const nextCandidateKey = contextReady && empty && emptyChanged
+      ? `empty:${currentContext}:${empty.textContent?.trim() ?? ''}`
+      : contextReady && list && pagination && nativeChanged
+        ? `list:${currentContext}:${signature}`
+        : ''
+
+    if (nextCandidateKey && nextCandidateKey === candidateKey) {
+      if (Date.now() - candidateSince >= stableWait) {
+        virtualTransitionActive = false
+        virtualRestartTimer = null
+        reapplyAll()
+        return
+      }
+    } else {
+      candidateKey = nextCandidateKey
+      candidateSince = nextCandidateKey ? Date.now() : 0
+    }
+
+    if (Date.now() >= deadline) {
+      virtualTransitionActive = false
+      virtualRestartTimer = null
+      return
+    }
+    virtualRestartTimer = setTimeout(poll, Math.max(50, Math.min(config.wait_ms, 150)))
+  }
+  virtualRestartTimer = setTimeout(poll, Math.max(50, Math.min(config.wait_ms, 150)))
 }
 
 function virtualContextChanged(): boolean {
   const selector = adapter?.virtual_pagination?.context_selector
-  if (!selector || !virtualPagination?.isActive()) return false
+  if (!selector) return false
   const current = document.querySelector(selector)?.textContent?.trim() ?? ''
   if (!current || !virtualContextValue || current === virtualContextValue) return false
-  scheduleVirtualContextRestart()
+  if (!virtualTransitionActive) scheduleVirtualContextRestart(current, true)
   return true
+}
+
+function handleVirtualContextClick(event: Event): void {
+  const config = adapter?.virtual_pagination
+  const target = event.target
+  if (!config?.context_trigger_selector || !(target instanceof Element)) return
+  const trigger = target.closest(config.context_trigger_selector)
+  if (!trigger) return
+  if (config.context_selector && trigger.matches(config.context_selector)) return
+  scheduleVirtualContextRestart(trigger.textContent?.trim() ?? '')
 }
 
 function report(): void {
@@ -264,6 +403,9 @@ function report(): void {
       type: 'FILTER_COUNT_UPDATED',
       count: filteredCount,
       unparseable: unparseableCount,
+      context: currentContext(),
+      completeness,
+      scan: scanProgress,
     })
     .catch(() => {})
   updateBanner()
@@ -280,7 +422,10 @@ function fmtCutoff(ts: number): string {
 }
 
 function updateBanner(): void {
-  if (!floatingBanner || settings?.cutoff == null) {
+  const hasBoundary = settings?.mode === 'window'
+    ? settings.window?.start != null && settings.window.end != null
+    : settings?.cutoff != null
+  if (!floatingBanner || !settings || !hasBoundary) {
     bannerEl?.remove()
     bannerEl = null
     return
@@ -306,9 +451,14 @@ function updateBanner(): void {
     document.body.appendChild(bannerEl)
   }
   const content = document.createElement('div')
+  const boundary = settings.mode === 'window'
+    ? `区间: ${fmtCutoff(settings.window!.start!)} 至 ${fmtCutoff(settings.window!.end!)}`
+    : `截止: ${fmtCutoff(settings.cutoff!)}`
   content.textContent =
-    `⏳ 时光机已激活 | 截止: ${fmtCutoff(settings.cutoff)} | 已过滤 ${filteredCount} 条` +
-    (unparseableCount > 0 ? `（${unparseableCount} 条无法解析）` : '')
+    `⏳ 时光机已激活 | ${boundary} | 已过滤 ${filteredCount} 条` +
+    (unparseableCount > 0 ? `（${unparseableCount} 条无法解析）` : '') +
+    (completeness === 'loaded-only' ? ' | 仅过滤已加载内容' : '')
+    + (scanProgress ? ` | 已扫描 ${scanProgress.scannedPages} 个原始页` : '')
   bannerEl.appendChild(content)
   // 保留 [关闭按钮, 最新内容]，移除更早的内容
   while (bannerEl.children.length > 2) bannerEl.removeChild(bannerEl.children[1])
@@ -320,11 +470,22 @@ function startObserver(): void {
   if (!adapter || observer) return
   observer = new MutationObserver((mutations) => {
     if (virtualContextChanged()) return
+    if (feedContextChanged()) return
+    // 类别响应可能慢于重启等待窗口；原生列表与分页真正到位后再重建。
+    if (
+      !virtualTransitionActive &&
+      !virtualPagination?.isActive() &&
+      virtualContextValue &&
+      virtualPaginationDomReady()
+    ) {
+      reapplyAll()
+      return
+    }
     for (const m of mutations) {
       for (const node of m.addedNodes) {
         if (!(node instanceof HTMLElement)) continue
         if (matchesPostSelectors(node)) {
-          if (!virtualPagination?.isActive()) processPost(node)
+          if (!virtualTransitionActive && !virtualPagination?.isActive()) processPost(node)
           continue
         }
         if (matchesCommentSelectors(node)) {
@@ -333,7 +494,7 @@ function startObserver(): void {
         }
         if (!node.querySelector) continue
         const postSel = adapter!.post_selectors.join(',')
-        if (postSel && !virtualPagination?.isActive()) {
+        if (postSel && !virtualTransitionActive && !virtualPagination?.isActive()) {
           node.querySelectorAll(postSel).forEach((sub) => processPost(sub as HTMLElement))
         }
         const cmtSel = adapter!.comment_selectors?.join(',')
@@ -344,6 +505,59 @@ function startObserver(): void {
     }
   })
   observer.observe(document.body, { childList: true, subtree: true })
+  document.addEventListener('click', handleVirtualContextClick, true)
+  document.addEventListener('click', handleFeedContextClick, true)
+}
+
+function feedContextEnabled(): boolean {
+  const config = adapter?.feed_context
+  return !!config && config.path_patterns.some((pattern) => new RegExp(pattern).test(location.pathname))
+}
+
+function currentFeedContext(): string {
+  const config = adapter?.feed_context
+  if (!config || !feedContextEnabled()) return ''
+  const values = config.active_selectors
+    .map((selector) => document.querySelector(selector)?.textContent?.trim() ?? '')
+    .filter((value, index, all) => value && all.indexOf(value) === index)
+  return values.join(' / ')
+}
+
+function currentContext(): string {
+  if (virtualContextValue) return virtualContextValue
+  return currentFeedContext()
+}
+
+function feedContextChanged(): boolean {
+  if (!feedContextEnabled()) return false
+  const current = currentFeedContext()
+  if (!current || !feedContextValue || current === feedContextValue) return false
+  scheduleFeedContextRestart()
+  return true
+}
+
+function handleFeedContextClick(event: Event): void {
+  const config = adapter?.feed_context
+  const target = event.target
+  if (!config || !feedContextEnabled() || !(target instanceof Element)) return
+  if (!config.trigger_selectors.some((selector) => target.closest(selector))) return
+  scheduleFeedContextRestart()
+}
+
+function scheduleFeedContextRestart(): void {
+  if (feedRestartTimer) clearTimeout(feedRestartTimer)
+  feedRestartTimer = setTimeout(() => {
+    feedRestartTimer = null
+    const next = currentFeedContext()
+    if (next && next !== feedContextValue) reapplyAll()
+  }, adapter?.feed_context?.wait_ms ?? 250)
+}
+
+function addDiagnostic(kind: TimeDiagnostic['kind'], raw: string): void {
+  const normalized = raw.trim().replace(/\s+/g, ' ').slice(0, 80) || '空文本'
+  if (diagnostics.some((item) => item.kind === kind && item.raw === normalized)) return
+  if (diagnostics.length >= 8) return
+  diagnostics.push({ kind, raw: normalized })
 }
 
 // ---------- 适配包失效检测（P1-5）----------
@@ -415,6 +629,10 @@ chrome.runtime.onMessage.addListener((msg: RuntimeMessage, _sender, sendResponse
         hasAdapter: adapter !== null,
         filteredCount,
         unparseableCount,
+        context: currentContext(),
+        completeness,
+        diagnostics: [...diagnostics],
+        scan: scanProgress,
       }
       sendResponse(state)
       break
@@ -463,11 +681,15 @@ async function init(): Promise<void> {
   }
   settings = await getTimeSettings(domain)
   await reloadPrefs()
+  feedContextValue = currentFeedContext()
+  completeness = feedContextValue
+    ? adapter.feed_context?.completeness ?? 'loaded-only'
+    : 'complete'
   scanExisting()
   startObserver()
   scheduleMismatchCheck()
   console.log(
-    `[时光机] 已激活: ${adapter.name} | 截止=${settings?.cutoff != null ? new Date(settings.cutoff).toLocaleString() : '未设定'} | 策略=${settings?.strategy ?? 'hide'} | 评论回退=${commentNoTime}`,
+    `[时光机] 已激活: ${adapter.name} | 模式=${settings?.mode ?? '未设定'} | 边界=${settings?.mode === 'window' ? `${settings.window?.start ?? '-'}..${settings.window?.end ?? '-'}` : settings?.cutoff ?? '-'} | 策略=${settings?.strategy ?? 'hide'} | 评论回退=${commentNoTime}`,
   )
 }
 

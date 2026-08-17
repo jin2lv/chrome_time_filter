@@ -33,7 +33,7 @@
         { u: '辛', delta: 3 * 24 * 60, type: 'relative', expectFilter: false }, // 3天前 → 保留
         { u: '壬', delta: 30, type: 'absolute', expectFilter: true },      // 绝对时间 30分钟前 → 过滤
         { u: '癸', delta: 4 * 60, type: 'absolute', expectFilter: false }, // 绝对时间 4小时前 → 保留
-        { u: '子', delta: 0, type: 'unparseable', expectFilter: false },   // "刚刚" → 无法解析，保留
+        { u: '子', delta: 0, type: 'now', expectFilter: true },            // "刚刚" → 按当前锚点解析，过滤
         { u: '丑', delta: 0, type: 'unparseable2', expectFilter: false },  // "x个月前" → 无法解析，保留
       ];
 
@@ -56,7 +56,7 @@
         let timeText;
         if (d.type === 'relative') timeText = relText(d.delta);
         else if (d.type === 'absolute') timeText = fmt(now - d.delta * 60000);
-        else if (d.type === 'unparseable') timeText = '刚刚';
+        else if (d.type === 'now') timeText = '刚刚';
         else timeText = '3个月前';
         el.innerHTML = `
           <div class="timeline__item__info">

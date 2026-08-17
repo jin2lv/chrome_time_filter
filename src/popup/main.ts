@@ -3,7 +3,7 @@
  *
  * 交互（PRD F1/F4）：
  * - 顶部开关：按 Tab 独立，新 Tab 默认开启；域名未设定时间时禁用
- * - 截止时间输入 + 快捷预设（1小时前/今日0点/昨日0点）
+ * - 截止/区间模式 + 快捷预设 + 边界校验
  * - 过滤策略单选（v0.1 仅隐藏可用，折叠随 P2 解锁）
  * - 当前站点：未授权时提示"点击授权"（optional_host_permissions 按需授权）
  * - 已过滤计数：实时查询 Content Script
@@ -19,9 +19,12 @@ const $ = <T extends HTMLElement>(id: string): T => {
   return el as T
 }
 
-/** 与 manifest optional_host_permissions 保持同步（xueqiu/同花顺/微博） */
-
 const cutoffInput = $<HTMLInputElement>('cutoff-input')
+const windowStartInput = $<HTMLInputElement>('window-start-input')
+const windowEndInput = $<HTMLInputElement>('window-end-input')
+const cutoffPanel = $<HTMLDivElement>('cutoff-panel')
+const windowPanel = $<HTMLDivElement>('window-panel')
+const timeError = $<HTMLParagraphElement>('time-error')
 const toggleBtn = $<HTMLButtonElement>('toggle-btn')
 const siteEl = $<HTMLDivElement>('site')
 const countEl = $<HTMLDivElement>('count')
@@ -29,12 +32,25 @@ const authArea = $<HTMLDivElement>('auth-area')
 const authBtn = $<HTMLButtonElement>('auth-btn')
 const authStatus = $<HTMLParagraphElement>('auth-status')
 const settingsBtn = $<HTMLButtonElement>('settings-btn')
+const diagnostics = $<HTMLElement>('diagnostics')
+const diagnosticsToggle = $<HTMLButtonElement>('diagnostics-toggle')
+const diagnosticsDetails = $<HTMLDivElement>('diagnostics-details')
+const diagnosticsList = $<HTMLUListElement>('diagnostics-list')
+const scopeStatus = $<HTMLParagraphElement>('scope-status')
 
 createIcons({ icons: { Settings } })
 
 let domain = ''
 let tabId: number | undefined
-let state: ContentState = { enabled: true, hasSettings: false, hasAdapter: false, filteredCount: 0, unparseableCount: 0 }
+let state: ContentState = {
+  enabled: true,
+  hasSettings: false,
+  hasAdapter: false,
+  filteredCount: 0,
+  unparseableCount: 0,
+  diagnostics: [],
+}
+let eventsBound = false
 
 settingsBtn.addEventListener('click', () => {
   void chrome.runtime.openOptionsPage()
@@ -82,10 +98,7 @@ async function init(): Promise<void> {
   if (isTarget && !authorized) {
     authArea.hidden = false
     toggleBtn.disabled = true
-    cutoffInput.disabled = true
-    document
-      .querySelectorAll<HTMLButtonElement>('.preset[data-preset]')
-      .forEach((button) => (button.disabled = true))
+    setTimeControlsDisabled(true)
     authBtn.addEventListener('click', requestAuth)
     return
   }
@@ -93,8 +106,15 @@ async function init(): Promise<void> {
   // 已授权：读时间设置 + 查询内容脚本状态
   if (isTarget) await ensureContentScriptActive()
   const settings = await getTimeSettings(domain)
-  if (settings?.cutoff != null) {
-    cutoffInput.value = toLocalInputValue(new Date(settings.cutoff))
+  if (settings) {
+    syncMode(settings.mode)
+    if (settings.cutoff != null) cutoffInput.value = toLocalInputValue(new Date(settings.cutoff))
+    if (settings.window?.start != null) {
+      windowStartInput.value = toLocalInputValue(new Date(settings.window.start))
+    }
+    if (settings.window?.end != null) {
+      windowEndInput.value = toLocalInputValue(new Date(settings.window.end))
+    }
     syncStrategy(settings.strategy)
   }
   await refreshContentState()
@@ -122,10 +142,7 @@ async function requestAuth(): Promise<void> {
     }
     await ensureContentScriptActive()
     setAuthStatus('已授权，过滤脚本已启动。')
-    cutoffInput.disabled = false
-    document
-      .querySelectorAll<HTMLButtonElement>('.preset[data-preset]')
-      .forEach((button) => (button.disabled = false))
+    setTimeControlsDisabled(false)
     bindEvents()
   } catch (error) {
     const detail = error instanceof Error ? `：${error.message}` : ''
@@ -148,13 +165,6 @@ function getContentScriptJs(): string[] {
 async function ensureContentScriptActive(): Promise<void> {
   if (tabId === undefined) return
 
-  try {
-    const current = await chrome.tabs.sendMessage(tabId, { type: 'QUERY_STATE' })
-    if (current) return
-  } catch {
-    // The current page has not received the content script yet.
-  }
-
   const js = getContentScriptJs()
   if (js.length === 0) throw new Error('扩展构建中缺少内容脚本')
   const match = `*://${domain}/*`
@@ -169,6 +179,13 @@ async function ensureContentScriptActive(): Promise<void> {
     await chrome.scripting.registerContentScripts([
       { id: CONTENT_SCRIPT_ID, matches: [match], js, runAt: 'document_idle', persistAcrossSessions: true },
     ])
+  }
+
+  try {
+    const current = await chrome.tabs.sendMessage(tabId, { type: 'QUERY_STATE' })
+    if (current) return
+  } catch {
+    // The current page has not received the content script yet.
   }
 
   await chrome.scripting.executeScript({ target: { tabId }, files: js })
@@ -187,6 +204,8 @@ async function refreshContentState(): Promise<void> {
 }
 
 function bindEvents(): void {
+  if (eventsBound) return
+  eventsBound = true
   toggleBtn.disabled = false
   toggleBtn.addEventListener('click', async () => {
     if (tabId === undefined) return
@@ -198,31 +217,81 @@ function bindEvents(): void {
     await refreshContentState()
   })
 
-  cutoffInput.addEventListener('change', () => void saveCutoff())
+  document.querySelectorAll<HTMLInputElement>('input[name="time-mode"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      syncMode(currentMode())
+      void saveTimeSettings()
+    })
+  })
+  cutoffInput.addEventListener('change', () => void saveTimeSettings())
+  windowStartInput.addEventListener('change', () => void saveTimeSettings())
+  windowEndInput.addEventListener('change', () => void saveTimeSettings())
   document.querySelectorAll<HTMLButtonElement>('.preset[data-preset]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const ts = resolvePreset(btn.dataset.preset ?? '')
       cutoffInput.value = toLocalInputValue(new Date(ts))
-      await saveCutoff(ts)
+      await saveTimeSettings()
+    })
+  })
+  document.querySelectorAll<HTMLButtonElement>('.preset[data-window-preset]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const value = resolveWindowPreset(btn.dataset.windowPreset ?? '')
+      windowStartInput.value = toLocalInputValue(new Date(value.start))
+      windowEndInput.value = toLocalInputValue(new Date(value.end))
+      await saveTimeSettings()
     })
   })
   document.querySelectorAll<HTMLInputElement>('input[name="strategy"]').forEach((r) => {
-    r.addEventListener('change', () => void saveCutoff())
+    r.addEventListener('change', () => void saveTimeSettings())
+  })
+  diagnosticsToggle.addEventListener('click', () => {
+    const expanded = diagnosticsToggle.getAttribute('aria-expanded') === 'true'
+    diagnosticsToggle.setAttribute('aria-expanded', String(!expanded))
+    diagnosticsDetails.hidden = expanded
   })
 }
 
-async function saveCutoff(explicitTs?: number): Promise<void> {
+async function saveTimeSettings(): Promise<void> {
   if (tabId === undefined) return
-  const value = cutoffInput.value
-  const ts = explicitTs ?? (value ? new Date(value).getTime() : null)
-  if (ts === null || Number.isNaN(ts)) return
-  const next: TimeSettings = {
-    mode: 'cutoff',
-    cutoff: ts,
-    strategy: currentStrategy(),
+  clearTimeError()
+  const mode = currentMode()
+  let next: TimeSettings
+  if (mode === 'window') {
+    const start = parseLocalInput(windowStartInput.value)
+    const end = parseLocalInput(windowEndInput.value)
+    if (start === null || end === null) {
+      showTimeError('请同时设置开始时间和结束时间。')
+      return
+    }
+    if (start > end) {
+      showTimeError('开始时间不能晚于结束时间。')
+      return
+    }
+    next = { mode, cutoff: null, window: { start, end }, strategy: currentStrategy() }
+  } else {
+    const cutoff = parseLocalInput(cutoffInput.value)
+    if (cutoff === null) {
+      showTimeError('请设置截止时间。')
+      return
+    }
+    next = { mode, cutoff, strategy: currentStrategy() }
   }
   await setTimeSettings(domain, next)
   await refreshContentState()
+}
+
+function currentMode(): TimeSettings['mode'] {
+  return document.querySelector<HTMLInputElement>('input[name="time-mode"]:checked')?.value === 'window'
+    ? 'window'
+    : 'cutoff'
+}
+
+function syncMode(mode: TimeSettings['mode']): void {
+  const radio = document.querySelector<HTMLInputElement>(`input[name="time-mode"][value="${mode}"]`)
+  if (radio) radio.checked = true
+  cutoffPanel.hidden = mode !== 'cutoff'
+  windowPanel.hidden = mode !== 'window'
+  clearTimeError()
 }
 
 function currentStrategy(): TimeSettings['strategy'] {
@@ -250,14 +319,90 @@ function resolvePreset(preset: string): number {
   }
 }
 
+function resolveWindowPreset(preset: string): { start: number; end: number } {
+  const now = new Date()
+  const endOfDay = (date: Date): number => {
+    const value = new Date(date)
+    value.setHours(23, 59, 59, 999)
+    return value.getTime()
+  }
+  const startOfDay = (date: Date): number => {
+    const value = new Date(date)
+    value.setHours(0, 0, 0, 0)
+    return value.getTime()
+  }
+  if (preset === 'yesterday') {
+    const date = new Date(now)
+    date.setDate(date.getDate() - 1)
+    return { start: startOfDay(date), end: endOfDay(date) }
+  }
+  if (preset === 'last_3_days') {
+    const date = new Date(now)
+    date.setDate(date.getDate() - 2)
+    return { start: startOfDay(date), end: now.getTime() }
+  }
+  if (preset === 'this_week') {
+    const date = new Date(now)
+    const day = date.getDay() || 7
+    date.setDate(date.getDate() - day + 1)
+    return { start: startOfDay(date), end: now.getTime() }
+  }
+  return { start: startOfDay(now), end: endOfDay(now) }
+}
+
 function render(): void {
-  const hasCutoff = state.hasSettings
   toggleBtn.textContent = state.enabled ? '关闭' : '开启'
-  toggleBtn.disabled = !hasCutoff
+  toggleBtn.disabled = !state.hasSettings
   countEl.textContent =
     state.filteredCount > 0
       ? `已过滤: ${state.filteredCount} 条${state.unparseableCount > 0 ? `（${state.unparseableCount} 条无法解析）` : ''}`
       : '已过滤: 0 条'
+  diagnostics.hidden = state.diagnostics.length === 0
+  diagnosticsList.replaceChildren(
+    ...state.diagnostics.map((item) => {
+      const li = document.createElement('li')
+      li.textContent = `${item.kind === 'comment' ? '评论' : '帖子'}：${item.raw || '无时间文本'}`
+      return li
+    }),
+  )
+  const loadedOnly = state.completeness === 'loaded-only'
+  const scanMessage = state.scan
+    ? scanStatusText(state.scan.state, state.scan.scannedPages, state.scan.maxPages)
+    : ''
+  scopeStatus.hidden = !loadedOnly && !scanMessage
+  scopeStatus.textContent = loadedOnly
+    ? `${state.context ? `${state.context}：` : ''}当前类别为智能或热度信息流，仅过滤已加载内容，结果不代表完整时间范围。`
+    : scanMessage
+}
+
+function scanStatusText(state: NonNullable<ContentState['scan']>['state'], scanned: number, max: number): string {
+  if (state === 'loading') return `正在跨页查找，已扫描 ${scanned} 个原生页面。`
+  if (state === 'exhausted') return `已扫描 ${scanned} 个原生页面，并到达网站末页。`
+  if (state === 'limit') return `已扫描 ${scanned} 个原生页面，达到 ${max} 页安全上限。`
+  if (state === 'cancelled') return `扫描已取消，已扫描 ${scanned} 个原生页面。`
+  if (state === 'error') return `原生页面加载失败，结果可能不完整；已扫描 ${scanned} 页。`
+  return scanned > 0 ? `已扫描 ${scanned} 个原生页面。` : ''
+}
+
+function setTimeControlsDisabled(disabled: boolean): void {
+  document.querySelectorAll<HTMLInputElement | HTMLButtonElement>('[data-time-control], input[name="time-mode"], .preset[data-preset], .preset[data-window-preset]')
+    .forEach((control) => { control.disabled = disabled })
+}
+
+function parseLocalInput(value: string): number | null {
+  if (!value) return null
+  const parsed = new Date(value).getTime()
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+function showTimeError(message: string): void {
+  timeError.textContent = message
+  timeError.hidden = false
+}
+
+function clearTimeError(): void {
+  timeError.textContent = ''
+  timeError.hidden = true
 }
 
 function toLocalInputValue(date: Date): string {

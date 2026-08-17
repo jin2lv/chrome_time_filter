@@ -26,7 +26,13 @@ const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
 /** 相对时间单位 → 毫秒 */
-const UNIT_MS: Record<string, number> = { minute: MINUTE, hour: HOUR, day: DAY, week: 7 * DAY }
+const UNIT_MS: Record<string, number> = {
+  second: 1000,
+  minute: MINUTE,
+  hour: HOUR,
+  day: DAY,
+  week: 7 * DAY,
+}
 
 /**
  * 从原始文本中提取时间部分：
@@ -143,6 +149,8 @@ export function extractTimestampText(
   attr?: string | null,
   dateAttr?: string | null,
   stripPattern?: string | null,
+  dateTextSelector?: string | null,
+  dateTextScopeSelector?: string | null,
 ): string | null {
   const node = el.matches(selector) ? el : el.querySelector(selector)
   if (!node) return null
@@ -158,6 +166,18 @@ export function extractTimestampText(
       }
     }
   }
+
+  // 分组日期模式：如雪球 7x24 的日期在 .timeline__live 标题，行内只有 HH:mm。
+  if (dateTextSelector) {
+    const scope = dateTextScopeSelector ? el.closest(dateTextScopeSelector) : el
+    const dateText = scope?.querySelector(dateTextSelector)?.textContent?.trim()
+    const timeText = attr ? node.getAttribute(attr) : node.textContent?.trim()
+    if (dateText && timeText) {
+      const raw = `${dateText} ${timeText}`
+      return stripPattern ? raw.replace(new RegExp(stripPattern), '').trim() : raw
+    }
+  }
+
   let raw: string | null = null
   if (attr) {
     raw = node.getAttribute(attr)

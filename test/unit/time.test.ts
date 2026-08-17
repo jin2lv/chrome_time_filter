@@ -35,6 +35,8 @@ console.log('✓ extractTimePart')
 
 // ---- parseRelativeTime（时间锚定）----
 approx(parseRelativeTime('9分钟前', patterns, anchor), 9 * 60_000, '9分钟前')
+approx(parseRelativeTime('5秒前', patterns, anchor), 5_000, '5秒前', 1)
+approx(parseRelativeTime('刚刚', patterns, anchor), 0, '刚刚', 1)
 approx(parseRelativeTime('17分钟前', patterns, anchor), 17 * 60_000, '17分钟前')
 approx(parseRelativeTime('3小时前', patterns, anchor), 3 * 3_600_000, '3小时前')
 approx(parseRelativeTime('昨天', patterns, anchor), 24 * 3_600_000, '昨天')
@@ -70,7 +72,7 @@ const absMix = parseTimestamp('2026-08-10 15:00', adapter, anchor)
 assert.ok(absMix !== null && !absMix.isRelative, 'relative 适配包：绝对时间兜底解析')
 assert.strictEqual(absMix!.timestamp, new Date('2026-08-10T15:00:00+08:00').getTime())
 // 无法解析 → null
-assert.strictEqual(parseTimestamp('刚刚', adapter, anchor), null, '未知格式 → null')
+assert.ok(parseTimestamp('刚刚', adapter, anchor)?.isRelative, '刚刚应按当前锚点解析')
 console.log('✓ parseTimestamp（相对优先 + 绝对兜底）')
 
 // ---- 截止判定（零误杀/零漏杀逻辑层）----

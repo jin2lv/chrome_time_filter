@@ -26,19 +26,41 @@
 
       <p id="precision-hint" class="precision-hint" hidden>⚠️ 该平台为相对时间，精度 ±5 分钟</p>
 
-      <section class="section">
-        <label class="field-label" for="cutoff-input">截止时间</label>
-        <input
-          id="cutoff-input"
-          class="cutoff-input"
-          type="datetime-local"
-          step="60"
-        />
-        <div class="presets">
+      <section class="section time-section">
+        <div class="mode-switch" role="radiogroup" aria-label="时间过滤模式">
+          <label><input type="radio" name="time-mode" value="cutoff" checked /><span>截止</span></label>
+          <label><input type="radio" name="time-mode" value="window" /><span>区间</span></label>
+        </div>
+
+        <div id="cutoff-panel" class="time-panel">
+          <label class="field-label" for="cutoff-input">显示此时间及以前</label>
+          <input id="cutoff-input" class="time-input" type="datetime-local" step="60" data-time-control />
+          <div class="presets">
           <button class="preset" data-preset="1_hour_ago">1小时前</button>
           <button class="preset" data-preset="today_midnight">今日0点</button>
           <button class="preset" data-preset="yesterday_midnight">昨日0点</button>
+          </div>
         </div>
+
+        <div id="window-panel" class="time-panel" hidden>
+          <div class="window-grid">
+            <label>
+              <span class="field-label">开始时间</span>
+              <input id="window-start-input" class="time-input" type="datetime-local" step="60" data-time-control />
+            </label>
+            <label>
+              <span class="field-label">结束时间</span>
+              <input id="window-end-input" class="time-input" type="datetime-local" step="60" data-time-control />
+            </label>
+          </div>
+          <div class="presets window-presets">
+            <button class="preset" data-window-preset="today">今天</button>
+            <button class="preset" data-window-preset="yesterday">昨天</button>
+            <button class="preset" data-window-preset="last_3_days">近3天</button>
+            <button class="preset" data-window-preset="this_week">本周</button>
+          </div>
+        </div>
+        <p id="time-error" class="field-error" role="alert" hidden></p>
       </section>
 
       <section class="section">
@@ -48,6 +70,17 @@
           <label class="radio"><input type="radio" name="strategy" value="collapse" /> 折叠</label>
         </div>
       </section>
+
+      <section id="diagnostics" class="diagnostics" hidden>
+        <button id="diagnostics-toggle" class="diagnostics-toggle" type="button" aria-expanded="false">
+          查看无法解析的时间
+        </button>
+        <div id="diagnostics-details" hidden>
+          <ul id="diagnostics-list"></ul>
+        </div>
+      </section>
+
+      <p id="scope-status" class="scope-status" hidden></p>
 
       <footer class="footer">
         <div class="site" id="site">当前站点: —</div>

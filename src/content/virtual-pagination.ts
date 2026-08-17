@@ -1,4 +1,4 @@
-import type { PlatformAdapter } from '../shared/types'
+import type { PlatformAdapter, ScanProgress } from '../shared/types'
 
 type VirtualPaginationConfig = NonNullable<PlatformAdapter['virtual_pagination']>
 
@@ -9,6 +9,7 @@ interface VirtualPaginationOptions {
   postSelector: string
   decide: (post: HTMLElement) => PostDecision
   onDecision: (decision: PostDecision) => void
+  onStateChange?: (progress: ScanProgress) => void
 }
 
 type ScanState = 'idle' | 'loading' | 'exhausted' | 'limit' | 'cancelled' | 'error'
@@ -22,6 +23,7 @@ export class VirtualPaginationController {
   private readonly postSelector: string
   private readonly decide: VirtualPaginationOptions['decide']
   private readonly onDecision: VirtualPaginationOptions['onDecision']
+  private readonly onStateChange?: VirtualPaginationOptions['onStateChange']
   private nativeList: HTMLElement
   private readonly root: HTMLElement
   private readonly list: HTMLElement
@@ -29,7 +31,10 @@ export class VirtualPaginationController {
   private readonly previousButton: HTMLButtonElement
   private readonly nextButton: HTMLButtonElement
   private readonly cancelButton: HTMLButtonElement
-  private readonly nativeDisplays = new Map<HTMLElement, string>()
+  private readonly nativeDisplays = new Map<HTMLElement, { value: string; priority: string }>()
+  private readonly nativeStyle: HTMLStyleElement
+  private readonly nativeVisibilityObserver: MutationObserver
+  private readonly nativeDomObserver: MutationObserver
   private readonly cached: HTMLElement[] = []
   private readonly seenIds = new Set<string>()
   private readonly seenSourcePages = new Set<string>()
@@ -57,12 +62,37 @@ export class VirtualPaginationController {
     this.postSelector = options.postSelector
     this.decide = options.decide
     this.onDecision = options.onDecision
+    this.onStateChange = options.onStateChange
     this.nativeList = nativeList
 
     this.root = document.createElement('section')
     this.root.className = 'tm-virtual-pagination'
     this.root.dataset.tmVirtualPagination = '1'
     this.root.style.cssText = 'display:block;width:100%;'
+
+    this.nativeStyle = document.createElement('style')
+    this.nativeStyle.textContent = '[data-tm-virtual-native="1"]{display:none!important;}'
+    document.documentElement.appendChild(this.nativeStyle)
+    this.nativeVisibilityObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        const element = mutation.target as HTMLElement
+        if (element.dataset.tmVirtualNative !== '1') continue
+        if (
+          element.style.getPropertyValue('display') !== 'none' ||
+          element.style.getPropertyPriority('display') !== 'important'
+        ) {
+          element.style.setProperty('display', 'none', 'important')
+        }
+      }
+    })
+    this.nativeDomObserver = new MutationObserver(() => {
+      if (this.destroyed) return
+      if (this.config.empty_selector && document.querySelector(this.config.empty_selector)) {
+        this.destroy()
+        return
+      }
+      this.bindCurrentNativeDom()
+    })
 
     this.list = document.createElement('div')
     this.list.className = 'tm-virtual-list'
@@ -94,6 +124,9 @@ export class VirtualPaginationController {
     this.root.append(this.list, controls)
 
     this.bindCurrentNativeDom()
+    nativeList.parentElement && this.nativeDomObserver.observe(nativeList.parentElement, {
+      childList: true,
+    })
   }
 
   async start(): Promise<void> {
@@ -106,13 +139,30 @@ export class VirtualPaginationController {
     return !this.destroyed
   }
 
+  getProgress(): ScanProgress {
+    return {
+      state: this.state,
+      scannedPages: this.scannedSourcePages,
+      maxPages: this.config.max_source_pages,
+      currentSourcePage: this.sourcePageValue(),
+    }
+  }
+
   destroy(): void {
     if (this.destroyed) return
     this.destroyed = true
     this.runId++
+    this.nativeVisibilityObserver.disconnect()
+    this.nativeDomObserver.disconnect()
     this.root.remove()
+    this.nativeStyle.remove()
     this.nativeDisplays.forEach((display, element) => {
-      element.style.display = display
+      delete element.dataset.tmVirtualNative
+      if (display.value) {
+        element.style.setProperty('display', display.value, display.priority)
+      } else {
+        element.style.removeProperty('display')
+      }
     })
   }
 
@@ -139,10 +189,22 @@ export class VirtualPaginationController {
     if (!list || !pagination) return false
     this.nativeList = list
     for (const element of [list, pagination]) {
-      if (!this.nativeDisplays.has(element)) this.nativeDisplays.set(element, element.style.display)
-      element.style.display = 'none'
+      if (!this.nativeDisplays.has(element)) {
+        this.nativeDisplays.set(element, {
+          value: element.style.getPropertyValue('display'),
+          priority: element.style.getPropertyPriority('display'),
+        })
+      }
+      element.dataset.tmVirtualNative = '1'
+      element.style.setProperty('display', 'none', 'important')
+      this.nativeVisibilityObserver.observe(element, {
+        attributes: true,
+        attributeFilter: ['style'],
+      })
     }
-    pagination.insertAdjacentElement('afterend', this.root)
+    if (this.root.previousElementSibling !== pagination) {
+      pagination.insertAdjacentElement('afterend', this.root)
+    }
     return true
   }
 
@@ -277,12 +339,44 @@ export class VirtualPaginationController {
     previousSignature = '',
   ): Promise<boolean> {
     const deadline = Date.now() + 5000
+    const stableWait = Math.max(100, this.config.wait_ms)
+    let candidateList: Element | null = null
+    let candidatePagination: Element | null = null
+    let candidatePage = ''
+    let candidateSignature = ''
+    let candidateSince = 0
     while (Date.now() < deadline && !this.destroyed && currentRun === this.runId) {
       await new Promise((resolve) => setTimeout(resolve, Math.max(50, this.config.wait_ms)))
+      if (this.config.empty_selector && document.querySelector(this.config.empty_selector)) {
+        this.destroy()
+        return false
+      }
+      const list = document.querySelector(this.config.list_selector)
+      const pagination = document.querySelector(this.config.native_pagination_selector)
       const current = this.sourcePageValue()
+      const signature = this.sourcePageSignature()
       const pageReady = expected ? current === expected : current !== previous
-      const contentReady = !previousSignature || this.sourcePageSignature() !== previousSignature
-      if (pageReady && contentReady) return true
+      const contentReady = !previousSignature || signature !== previousSignature
+      if (!list || !pagination || !pageReady || !contentReady) {
+        candidateList = null
+        candidatePagination = null
+        candidateSince = 0
+        continue
+      }
+      if (
+        list === candidateList &&
+        pagination === candidatePagination &&
+        current === candidatePage &&
+        signature === candidateSignature
+      ) {
+        if (Date.now() - candidateSince >= stableWait) return true
+        continue
+      }
+      candidateList = list
+      candidatePagination = pagination
+      candidatePage = current
+      candidateSignature = signature
+      candidateSince = Date.now()
     }
     return false
   }
@@ -323,6 +417,7 @@ export class VirtualPaginationController {
     } else {
       this.status.textContent = `第 ${page} 页 · 已扫描 ${this.scannedSourcePages} 个原始页`
     }
+    this.onStateChange?.(this.getProgress())
   }
 
   private showPrevious(): void {

@@ -7,7 +7,7 @@
 import type { PlatformAdapter, TimestampParserType } from '../shared/types'
 
 const TIMESTAMP_TYPES: TimestampParserType[] = ['absolute', 'relative', 'iso8601', 'custom']
-const UNITS = ['minute', 'hour', 'day', 'week'] as const
+const UNITS = ['second', 'minute', 'hour', 'day', 'week'] as const
 
 export function validateAdapter(pkg: unknown): string[] | null {
   const errors: string[] = []
@@ -63,6 +63,11 @@ function validatePlatform(pl: PlatformAdapter): string[] {
   if (ts.date_attr !== undefined && ts.date_attr !== null && typeof ts.date_attr !== 'string') {
     errs.push('timestamp.date_attr 必须是字符串或 null')
   }
+  for (const name of ['date_text_selector', 'date_text_scope_selector'] as const) {
+    if (ts[name] !== undefined && ts[name] !== null && typeof ts[name] !== 'string') {
+      errs.push(`timestamp.${name} 必须是字符串或 null`)
+    }
+  }
   if (ts.type === 'relative') {
     if (!Array.isArray(ts.patterns) || ts.patterns.length === 0) {
       errs.push('relative 类型必须提供 timestamp.patterns')
@@ -89,6 +94,39 @@ function validatePlatform(pl: PlatformAdapter): string[] {
   if (!Array.isArray(pl.quick_presets)) {
     errs.push('quick_presets 必须是数组')
   }
+  if (pl.feed_context !== undefined) {
+    const feed = pl.feed_context
+    if (!feed || typeof feed !== 'object') {
+      errs.push('feed_context 必须是对象')
+    } else {
+      if (!Array.isArray(feed.path_patterns) || feed.path_patterns.length === 0) {
+        errs.push('feed_context.path_patterns 必须是非空数组')
+      } else {
+        feed.path_patterns.forEach((pattern, i) => {
+          if (typeof pattern !== 'string' || !pattern) {
+            errs.push(`feed_context.path_patterns[${i}] 必须是非空字符串`)
+            return
+          }
+          try {
+            new RegExp(pattern)
+          } catch {
+            errs.push(`feed_context.path_patterns[${i}] 不是合法正则`)
+          }
+        })
+      }
+      for (const name of ['active_selectors', 'trigger_selectors'] as const) {
+        if (!Array.isArray(feed[name]) || feed[name].length === 0 || feed[name].some((v) => typeof v !== 'string' || !v)) {
+          errs.push(`feed_context.${name} 必须是非空字符串数组`)
+        }
+      }
+      if (!Number.isFinite(feed.wait_ms) || feed.wait_ms < 0) {
+        errs.push('feed_context.wait_ms 必须是非负数')
+      }
+      if (feed.completeness !== 'loaded-only' && feed.completeness !== 'complete') {
+        errs.push('feed_context.completeness 必须是 loaded-only/complete')
+      }
+    }
+  }
   if (pl.virtual_pagination !== undefined) {
     const virtual = pl.virtual_pagination
     if (!virtual || typeof virtual !== 'object') {
@@ -111,6 +149,24 @@ function validatePlatform(pl: PlatformAdapter): string[] {
         (typeof virtual.context_selector !== 'string' || !virtual.context_selector)
       ) {
         errs.push('virtual_pagination.context_selector 必须是非空字符串')
+      }
+      if (
+        virtual.context_trigger_selector !== undefined &&
+        (typeof virtual.context_trigger_selector !== 'string' || !virtual.context_trigger_selector)
+      ) {
+        errs.push('virtual_pagination.context_trigger_selector 必须是非空字符串')
+      }
+      if (
+        virtual.empty_selector !== undefined &&
+        (typeof virtual.empty_selector !== 'string' || !virtual.empty_selector)
+      ) {
+        errs.push('virtual_pagination.empty_selector 必须是非空字符串')
+      }
+      if (
+        virtual.context_wait_ms !== undefined &&
+        (!Number.isFinite(virtual.context_wait_ms) || virtual.context_wait_ms < 0)
+      ) {
+        errs.push('virtual_pagination.context_wait_ms 必须是非负数')
       }
       if (!virtual.post_id || typeof virtual.post_id !== 'object') {
         errs.push('virtual_pagination.post_id 必须是对象')

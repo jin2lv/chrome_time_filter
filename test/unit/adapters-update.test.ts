@@ -37,6 +37,7 @@ const storageMap = new Map<string, unknown>()
 const mockFetch = (globalThis as Record<string, unknown>).fetch
 const sendMessages: unknown[] = []
 const alarmsCreated: unknown[] = []
+const contentScriptUpdates: Array<{ js?: string[] }> = []
 
 ;(globalThis as Record<string, unknown>).chrome = {
   runtime: {
@@ -44,12 +45,20 @@ const alarmsCreated: unknown[] = []
     onInstalled: { addListener: (cb: (d: { reason: string }) => void) => void cb({ reason: 'install' }) },
     onStartup: { addListener: () => {} },
     onMessage: { addListener: () => {} },
-    getManifest: () => ({ content_scripts: [{ js: ['assets/x.js'] }] }),
+    getManifest: () => ({ content_scripts: [{ js: ['assets/current-loader.js'] }] }),
     getURL: (p: string) => p,
   },
   scripting: {
-    getRegisteredContentScripts: async () => [],
+    getRegisteredContentScripts: async () => [{
+      id: 'tm-main',
+      matches: ['*://xueqiu.com/*'],
+      js: ['assets/stale-loader.js'],
+    }],
     registerContentScripts: async () => {},
+    updateContentScripts: async (scripts: Array<{ js?: string[] }>) => {
+      contentScriptUpdates.push(...scripts)
+    },
+    unregisterContentScripts: async () => {},
   },
   permissions: {
     getAll: async () => ({ origins: ['*://xueqiu.com/*'] }),
@@ -92,9 +101,9 @@ const alarmsCreated: unknown[] = []
 // prefs：自动更新开启
 storageMap.set('prefs', { autoUpdateAdapters: true, commentNoTime: 'show' })
 
-// 构造远程包（比内置 0.1.x 更新的 0.2.0）
+// 构造远程包（比当前内置雪球 0.3.0 更新的 0.4.0）
 const remotePkg = {
-  version: '0.2.0',
+  version: '0.4.0',
   platforms: [
     {
       name: '雪球',
@@ -118,10 +127,16 @@ const { getRemoteAdapter } = await import('../../src/shared/storage')
 let r = await updateAdapters()
 check('新版本 → 更新成功', r.updated === true, JSON.stringify(r))
 const stored = await getRemoteAdapter()
-check('storage 已写入远程包 v0.2.0', stored?.version === '0.2.0', stored?.version ?? 'null')
+check('storage 已写入远程包 v0.4.0', stored?.version === '0.4.0', stored?.version ?? 'null')
 check('已广播 ADAPTERS_UPDATED', sendMessages.some((m) => (m as { type?: string }).type === 'ADAPTERS_UPDATED'))
 const ths = AdapterManager.getAdapter('xueqiu.com')
 check('AdapterManager 使用远程包', ths?.name === '雪球' && (ths as unknown as { version?: string }).version === undefined)
+
+// 2a-2. 扩展升级后，旧远程缓存不得覆盖版本更高的内置适配包
+AdapterManager.setRemoteAdapters([{ ...remotePkg, version: '0.2.0' }])
+const builtinWins = AdapterManager.getPackageFor('xueqiu.com')
+check('旧远程缓存不覆盖新版内置包', builtinWins?.version === '0.3.0', builtinWins?.version ?? 'null')
+AdapterManager.setRemoteAdapters([remotePkg])
 
 // 2b. 旧版本 → 跳过
 ;(globalThis as Record<string, unknown>).fetch = async () => ({
@@ -153,6 +168,11 @@ check('开关关闭 → 跳过', r.updated === false && r.reason === 'disabled',
 
 // 2f. alarm 创建（onInstalled 内）
 check('alarm 已注册（12h）', alarmsCreated.length > 0 && (alarmsCreated[0] as { opts: { periodInMinutes: number } }).opts.periodInMinutes === 720)
+check(
+  '扩展启动时更新动态内容脚本哈希',
+  contentScriptUpdates.some((script) => script.js?.[0] === 'assets/current-loader.js'),
+  JSON.stringify(contentScriptUpdates),
+)
 
 // 恢复 fetch
 ;(globalThis as Record<string, unknown>).fetch = mockFetch

@@ -40,7 +40,7 @@ function getContentScriptJs(): string[] {
 }
 
 /** 注册（或确保已注册）content script；host 授权后才实际注入 */
-async function ensureContentScriptRegistered(): Promise<void> {
+export async function ensureContentScriptRegistered(): Promise<void> {
   try {
     const matches: string[] = []
     for (const match of TARGET_MATCHES) {
@@ -53,13 +53,21 @@ async function ensureContentScriptRegistered(): Promise<void> {
       }
       return
     }
-    if (existing.length > 0) {
-      await chrome.scripting.updateContentScripts([{ id: CONTENT_SCRIPT_ID, matches }])
-      return
-    }
     const js = getContentScriptJs()
     if (js.length === 0) {
       console.warn('[时光机] manifest 缺少 content_scripts 声明，无法注册')
+      return
+    }
+    if (existing.length > 0) {
+      await chrome.scripting.updateContentScripts([
+        {
+          id: CONTENT_SCRIPT_ID,
+          matches,
+          js,
+          runAt: 'document_idle',
+          persistAcrossSessions: true,
+        },
+      ])
       return
     }
     await chrome.scripting.registerContentScripts([

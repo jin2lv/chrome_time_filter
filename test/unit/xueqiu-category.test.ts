@@ -14,6 +14,9 @@ const dom = new JSDOM(`
 `, { url: 'https://xueqiu.com/S/SZ300142' })
 
 const { window } = dom
+const emptyTab = window.document.createElement('a')
+emptyTab.textContent = 'empty'
+window.document.querySelector('.stock-timeline-tabs')!.appendChild(emptyTab)
 Object.assign(globalThis, {
   window,
   document: window.document,
@@ -70,15 +73,57 @@ assert.doesNotMatch(virtualText(), /资讯帖子0/)
 const tabs = [...document.querySelectorAll('.stock-timeline-tabs a')]
 tabs[0].classList.remove('active')
 tabs[1].classList.add('active')
-renderPosts('资讯')
-document.querySelector('.pagination')!.outerHTML = `
-  <div class="pagination">
-    <a class="active">1</a><button class="pagination__next disabled">下一页</button><input>
-  </div>`
-await new Promise((resolve) => setTimeout(resolve, 800))
+setTimeout(() => {
+  renderPosts('资讯')
+  document.querySelector('.pagination')!.outerHTML = `
+    <div class="pagination">
+      <a class="active">1</a><button class="pagination__next disabled">下一页</button><input>
+    </div>`
+}, 400)
+await new Promise((resolve) => setTimeout(resolve, 1800))
 
 assert.match(virtualText(), /资讯帖子0/, '类别变化后应丢弃旧缓存并为新类别重建虚拟页')
 assert.doesNotMatch(virtualText(), /讨论帖子0/)
+assert.equal(document.querySelectorAll('.tm-virtual-pagination').length, 1)
+
+tabs[2].click()
+assert.equal(document.querySelector('.tm-virtual-pagination'), null, 'inactive category click should stop the old scan immediately')
+tabs[1].classList.remove('active')
+tabs[2].classList.add('active')
+setTimeout(() => {
+  const staleList = document.querySelector('.status-list')
+  staleList?.setAttribute('data-intermediate', '1')
+}, 400)
+setTimeout(() => {
+  document.querySelector('.status-list')?.remove()
+  document.querySelector('.pagination')?.remove()
+  const empty = document.createElement('div')
+  empty.className = 'empty'
+  empty.textContent = 'no content'
+  document.querySelector('.stock-timeline')!.appendChild(empty)
+}, 1400)
+await new Promise((resolve) => setTimeout(resolve, 2800))
+
+assert.equal(document.querySelector('.tm-virtual-pagination'), null, 'empty category should preserve the native empty state')
+assert.equal(document.querySelector('.stock-timeline > .empty')?.textContent, 'no content')
+assert.doesNotMatch(document.body.textContent ?? '', /原始页面加载失败/)
+
+tabs[0].click()
+tabs[2].classList.remove('active')
+tabs[0].classList.add('active')
+setTimeout(() => {
+  document.querySelector('.stock-timeline > .empty')?.remove()
+  const list = document.createElement('div')
+  list.className = 'status-list'
+  const pagination = document.createElement('div')
+  pagination.className = 'pagination'
+  pagination.innerHTML = '<a class="active">1</a><button class="pagination__next disabled">next</button><input>'
+  document.querySelector('.stock-timeline')!.append(list, pagination)
+  renderPosts('recovered')
+}, 400)
+await new Promise((resolve) => setTimeout(resolve, 1800))
+
+assert.match(virtualText(), /recovered/, 'virtual pagination should recover after leaving an empty category')
 assert.equal(document.querySelectorAll('.tm-virtual-pagination').length, 1)
 
 ;(listeners[0] as (message: unknown) => void)({ type: 'TOGGLE_FILTER' })

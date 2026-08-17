@@ -110,14 +110,14 @@ function audit(): { total: number; filtered: number; wrong: number; wrongDetail:
   }
 }
 
-// 1. 初始过滤（12 条，5 条应过滤：9/17/45/110分钟前 + 绝对30分钟前）
+// 1. 初始过滤（12 条，6 条应过滤：刚刚、9/17/45/110分钟前 + 绝对30分钟前）
 console.log('1. 初始过滤（截止 = 2 小时前）')
 let r = audit()
 check('12 条帖子全部处理', r.total === 12, `got ${r.total}`)
-check('过滤 5 条', r.filtered === 5, `got ${r.filtered}`)
+check('过滤 6 条', r.filtered === 6, `got ${r.filtered}`)
 check('零误杀/零漏杀', r.wrong === 0, JSON.stringify(r.wrongDetail))
-check('计数上报 = 5', lastReportedCount === 5, `got ${lastReportedCount}`)
-check('无法解析 = 2（刚刚/3个月前）', lastReportedUnparseable === 2, `got ${lastReportedUnparseable}`)
+check('计数上报 = 6', lastReportedCount === 6, `got ${lastReportedCount}`)
+check('无法解析 = 1（3个月前）', lastReportedUnparseable === 1, `got ${lastReportedUnparseable}`)
 
 // 2. MutationObserver 增量（滚动加载 2 条：3分钟前应过滤、8小时前保留）
 console.log('2. MutationObserver 增量过滤')
@@ -126,7 +126,7 @@ btn.click()
 await new Promise((r) => setTimeout(r, 100))
 r = audit()
 check('14 条帖子', r.total === 14, `got ${r.total}`)
-check('过滤 6 条（新增 3分钟前）', r.filtered === 6, `got ${r.filtered}`)
+check('过滤 7 条（新增 3分钟前）', r.filtered === 7, `got ${r.filtered}`)
 check('零误杀/零漏杀', r.wrong === 0, JSON.stringify(r.wrongDetail))
 
 // 3. 时间设置变更 → 重应用（截止改 8 小时前）
@@ -147,8 +147,8 @@ await new Promise((r) => setTimeout(r, 150))
 r = audit()
 // 8 小时前截止：过滤 9/17/45/110分钟前、绝对30分钟前、3分钟前 = 6 条；3h/5h/abs4h 也 <8h
 // 实际：<8h 的全部过滤。帖子时间：9m,17m,45m,110m,3h,5h,26h,3d,abs30m,abs4h,刚刚,3个月前,3m,10h
-// <8h: 9m,17m,45m,110m,3h,5h,abs30m,abs4h,3m = 9 条（10h/26h/3d/无法解析 保留）
-if (r.filtered !== 9) {
+// <8h: 刚刚,9m,17m,45m,110m,3h,5h,abs30m,abs4h,3m = 10 条（10h/26h/3d/无法解析 保留）
+if (r.filtered !== 10) {
   const detail = [...document.querySelectorAll('.timeline__item')].map((p) => {
     const t = (p as HTMLElement).dataset.expectFilter === 'true' ? 'E1' : 'E0'
     const vis = (p as HTMLElement).style.display === 'none' ? 'HIDE' : 'show'
@@ -156,8 +156,8 @@ if (r.filtered !== 9) {
   })
   console.log('   DEBUG:', JSON.stringify(detail, null, 1))
 }
-check('过滤 9 条', r.filtered === 9, `got ${r.filtered}`)
-check('无判定错误（与 expectFilter 不符属预期变化，仅校验数量）', r.filtered === 9)
+check('过滤 10 条', r.filtered === 10, `got ${r.filtered}`)
+check('无判定错误（与 expectFilter 不符属预期变化，仅校验数量）', r.filtered === 10)
 
 // 4. 开关切换（TOGGLE_FILTER → 恢复显示 → 再开重新过滤）
 console.log('4. 开关切换')
@@ -168,10 +168,10 @@ check('关闭后全部恢复显示', visible === 14, `got ${visible}`)
 ;(messageListeners[0] as (m: unknown) => void)({ type: 'TOGGLE_FILTER' })
 await new Promise((r) => setTimeout(r, 100))
 r = audit()
-check('重新开启后恢复过滤（9 条）', r.filtered === 9, `got ${r.filtered}`)
+check('重新开启后恢复过滤（10 条）', r.filtered === 10, `got ${r.filtered}`)
 
 // 5. 折叠策略（P2-3）：切换 collapse → 占位条替换 → 点击展开
-// 注：此时页面 14 条，2h 截止过滤 6 条（9m,17m,45m,110m,abs30m,3m）
+// 注：此时页面 14 条，2h 截止过滤 7 条（刚刚,9m,17m,45m,110m,abs30m,3m）
 console.log('5. 折叠策略')
 storageMap.set('timeSettings.xueqiu.com', {
   mode: 'cutoff',
@@ -181,21 +181,21 @@ storageMap.set('timeSettings.xueqiu.com', {
 ;(messageListeners[0] as (m: unknown) => void)({ type: 'TIME_SETTINGS_UPDATED', domain: 'xueqiu.com', settings: storageMap.get('timeSettings.xueqiu.com') })
 await new Promise((r) => setTimeout(r, 150))
 const collapsed = document.querySelectorAll('.tm-collapsed').length
-check('折叠占位条数 = 过滤数（6）', collapsed === 6, `got ${collapsed}`)
+check('折叠占位条数 = 过滤数（7）', collapsed === 7, `got ${collapsed}`)
 const hiddenPosts = [...document.querySelectorAll('.timeline__item')].filter(
   (p) => (p as HTMLElement).style.display === 'none',
 ).length
-check('折叠时帖子仍隐藏', hiddenPosts === 6, `got ${hiddenPosts}`)
+check('折叠时帖子仍隐藏', hiddenPosts === 7, `got ${hiddenPosts}`)
 // 点击第一个占位条 → 展开对应帖子
 const firstPh = document.querySelector('.tm-collapsed') as HTMLElement
 firstPh?.click()
 await new Promise((r) => setTimeout(r, 50))
 const collapsedAfter = document.querySelectorAll('.tm-collapsed').length
-check('点击占位条后占位条移除', collapsedAfter === 5, `got ${collapsedAfter}`)
+check('点击占位条后占位条移除', collapsedAfter === 6, `got ${collapsedAfter}`)
 const unhidden = [...document.querySelectorAll('.timeline__item')].filter(
   (p) => (p as HTMLElement).style.display !== 'none',
 ).length
-check('对应帖子恢复显示', unhidden === 9, `got ${unhidden}`) // 8 保留 + 1 展开
+check('对应帖子恢复显示', unhidden === 8, `got ${unhidden}`) // 7 保留 + 1 展开
 
 // 6. 评论过滤（P2-4）：按自身时间戳独立判定 + 无时间戳回退策略
 console.log('6. 评论过滤（P2-4）')
