@@ -21,10 +21,13 @@ const REMOTE_ADAPTERS_URL = 'https://cdn.jsdelivr.net/gh/org/repo@latest/adapter
 const ADAPTERS_ALARM = 'adapters-update'
 const ADAPTERS_INTERVAL_MINUTES = 12 * 60 // 每 12h
 
-/** 目标平台域名（必须与 optional_host_permissions 严格保持同步） */
+/** 目标平台域名（必须与 optional_host_permissions / web_accessible_resources 严格保持同步） */
 const TARGET_MATCHES = [
   '*://xueqiu.com/*',
   '*://t.10jqka.com.cn/*',
+  '*://finance.eastmoney.com/*',
+  '*://jisilu.cn/*',
+  '*://www.jisilu.cn/*',
 ]
 
 const CONTENT_SCRIPT_ID = 'tm-main'

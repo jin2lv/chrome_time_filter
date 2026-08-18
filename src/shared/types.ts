@@ -63,6 +63,12 @@ export interface PlatformAdapter {
      * V2：前置正则剥离（如知乎 "编辑于 " 前缀）
      */
     strip_pattern?: string
+    /**
+     * 先对原始文本做正则提取（命中取 match[0]），再走相对/绝对解析；
+     * 未命中回退原文本。用于时间混排在整行文本中的平台（如集思录
+     * 「作者 回复 • 2026-08-17 22:05 • 5856 次浏览」）。
+     */
+    extract_pattern?: string
   }
   /** 详情页评论选择器（评论按自身时间戳独立过滤） */
   comment_selectors?: string[]
@@ -82,6 +88,11 @@ export interface PlatformAdapter {
   }
   /** 快捷预设 */
   quick_presets: { label: string; value: string }[]
+  /**
+   * 页面白名单（pathname 正则）。声明后仅白名单路径启用过滤与失效检测；
+   * 其他路径内容脚本静默退出。多页面类型平台必需，避免正文页零匹配误报失效模态。
+   */
+  active_paths?: string[]
   /** 可选虚拟分页：跨原生页面按需聚合符合时间条件的帖子 */
   virtual_pagination?: {
     list_selector: string
@@ -145,6 +156,10 @@ export type ContentCompleteness = 'complete' | 'loaded-only' | 'scanning' | 'exh
 export interface TimeDiagnostic {
   kind: 'post' | 'comment'
   raw: string
+  /** 页面 pathname（不含 query） */
+  page?: string
+  /** 当前类别/上下文 */
+  context?: string
 }
 
 export interface ScanProgress {

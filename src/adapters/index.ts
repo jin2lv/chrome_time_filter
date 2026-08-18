@@ -13,9 +13,16 @@ import { getRemoteAdapter } from '../shared/storage'
 import { validateAdapter } from './schema'
 import xueqiuAdapter from './xueqiu.json'
 import thsAdapter from './ths.json'
+import jisiluAdapter from './jisilu.json'
+import eastmoneyNewsAdapter from './eastmoney-news.json'
 
 /** 内置兜底适配包（随扩展打包，始终可用） */
-const BUILTIN_ADAPTERS: Adapter[] = [xueqiuAdapter as unknown as Adapter, thsAdapter as unknown as Adapter]
+const BUILTIN_ADAPTERS: Adapter[] = [
+  xueqiuAdapter as unknown as Adapter,
+  thsAdapter as unknown as Adapter,
+  jisiluAdapter as unknown as Adapter,
+  eastmoneyNewsAdapter as unknown as Adapter,
+]
 
 class AdapterManagerImpl {
   private remoteAdapters: Adapter[] = []

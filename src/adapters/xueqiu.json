@@ -39,7 +39,10 @@
       "quick_presets": [
         { "label": "1小时前", "value": "1_hour_ago" },
         { "label": "今日0点", "value": "today_midnight" },
-        { "label": "昨日0点", "value": "yesterday_midnight" }
+        { "label": "昨日0点", "value": "yesterday_midnight" },
+        { "label": "今天09:15", "value": "today_0915" },
+        { "label": "今天09:30", "value": "today_0930" },
+        { "label": "昨日收盘前", "value": "yesterday_1500" }
       ],
       "virtual_pagination": {
         "list_selector": ".stock-timeline > .status-list",

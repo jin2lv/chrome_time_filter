@@ -1,0 +1,22 @@
+{
+  "version": "0.1.0",
+  "platforms": [
+    {
+      "name": "东方财富资讯",
+      "domains": ["finance.eastmoney.com"],
+      "post_selectors": ["li[id^='newsTr']"],
+      "timestamp": {
+        "selector": "p.time",
+        "type": "absolute",
+        "format": "YYYY年MM月DD日 HH:mm"
+      },
+      "active_paths": ["^/a/[a-z]+(_\\d+)?\\.html$"],
+      "quick_presets": [
+        { "label": "1小时前", "value": "1_hour_ago" },
+        { "label": "今日0点", "value": "today_midnight" },
+        { "label": "昨日0点", "value": "yesterday_midnight" }
+      ],
+      "notes": "DOM 取证于 2026-08-18：证券聚焦 a/czqyw.html 与股市评论 a/cgspl.html 双栏目同模板（41-42 条/页），列表 li[id^='newsTr']（有图/无图两变体均含 .text），时间 p.time 为 YYYY年MM月DD日 HH:mm 全年份绝对时间；分页 {栏目}_{n}.html 服务端 URL，栏目即上下文。active_paths 排除 /a/{数字}.html 正文页（无列表时间流，正文页不启用过滤）。选择器为单快照样本待真机验收。"
+    }
+  ]
+}

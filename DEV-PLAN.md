@@ -1,5 +1,40 @@
 # TimeMachine 时光机 — 开发计划与验证清单
 
+## 2026-08-18 开发/测试交接记录（有限开闸批次）
+
+> 本节记录「有限开闸」批次（`.kilo/plans/1787062802798-limited-unblock-jisilu-eastmoney-news.md`）的落地状态。该批次因 P2-16 雪球终验被风控/真机条件阻塞而启动，只做不动雪球核心引擎的通用增强与两个零跨年歧义平台的适配；继续遵守「雪球验收未通过前不并行启动其他平台正式适配开发」的闸门约束，本批次新平台仅内置适配包，真机验收仍欠。
+
+### 本批完成项
+
+- 时间解析通用增强 `timestamp.extract_pattern`（正则提取时间子串，命中取 `match[0]` 再走相对/绝对解析，未命中回退原文本）。
+- 适配包页面白名单 `active_paths`（pathname 正则）：声明后仅白名单路径启用过滤与失效检测，其他路径 content script 静默退出（`console.log` 后 return，不建 observer、不弹模态）；雪球/同花顺未声明，行为不变。
+- 新内置适配包：集思录 `src/adapters/jisilu.json` v0.1.0（`domains: ["jisilu.cn"]`，列表 `.aw-question-list > .aw-item` + 详情回复 `.aw-dynamic-topic > .aw-item[id^='answer_list_']`，`extract_pattern` 从「作者 回复 • YYYY-MM-DD HH:mm • N 次浏览」提取时间，全年份无跨年歧义）；东方财富资讯 `src/adapters/eastmoney-news.json` v0.1.0（`domains: ["finance.eastmoney.com"]`，`li[id^='newsTr']` + `p.time` 中文年月日格式）。两者均为服务端 URL 分页，不接虚拟分页（P2-17 范畴），仅逐页加载过滤。两个适配包已挂入 `BUILTIN_ADAPTERS`。
+- 权限接线三处同步：`optional_host_permissions` / `web_accessible_resources.matches`（vite.config.ts）/ background `TARGET_MATCHES` 各追加 `*://finance.eastmoney.com/*`、`*://jisilu.cn/*`、`*://www.jisilu.cn/*`；popup 授权 origin 改为按实际 hostname 构造（hostname 带 www 且与 apex 不同时一次 request 传两个 origins），storage key 仍用 `extractDomain` 归一后的 apex。
+- Popup 截止预设适配包驱动化：`renderCutoffPresets` 按 `adapter.quick_presets` 生成按钮（无适配包时沿用三兜底项），`resolvePreset` 新增 `today_0915`/`today_0930`/`yesterday_1500`；雪球适配包 quick_presets 由 3 项扩为 6 项（新增「今天09:15」「今天09:30」「昨日收盘前」）。`test/unit/popup-auth.test.ts` 预设按钮期望由 3 改为 6（保持绿灯，非新增测试）。
+- 诊断明细增强：`TimeDiagnostic` 增加 `page`（pathname，不含 query）与 `context`（当前类别/上下文）；Popup 诊断展开区新增「复制诊断报告」按钮，复制内容为平台/适配包内置版本、模式与边界、计数、逐条 {kind, page, context, raw, 回退行为=默认显示}，含 pathname 与时间原文，不含 URL query/帖子正文/账号信息（PRD F8 脱敏约束）。
+
+### 代码审查修复（2026-08-18 晚，本地 review 后按用户指示修复）
+
+- `authOrigins()` 收敛到 manifest `optional_host_permissions` 声明清单：派生 origin 超出声明时（如未声明 www 变体的 hostname）request 必失败形成授权死结，现过滤后回退 apex；`test/unit/popup-auth.test.ts` 与 `popup-window.test.ts` 的 runtime mock 补充 `optional_host_permissions`。
+- `active_paths` 白名单判定抽为 `isPathAllowed(platform)`，init 早退时置 `adapter = null`，`reloadAdapter`（ADAPTERS_UPDATED 通路）复用同一判定——排除页在消息通路（TIME_SETTINGS_UPDATED/ADAPTERS_UPDATED/QUERY_STATE）同样静默退出，不再经 `reapplyAll` 意外过滤。
+- `requestAuth` 成功路径与 init 已授权路径同构：隐藏授权区、`loadSettingsIntoUI()`（重读 settings 回显输入）、`refreshContentState()`——修复授权后复制诊断报告输出「模式=未设定」及授权区文案矛盾。
+- `extract_pattern` 正则编译缓存（模块级 Map，同一正则复用实例），消除逐帖重复 `new RegExp`；灾难性回溯模式复杂度阈值检查登记为 P2-19 适配健康检查项（本批不实现）。
+- schema 跨字段约束：`type === 'relative'` 不得声明 `extract_pattern`（提取会使相对文本跳过相对解析、静默错误归类）；`quick_presets` 校验 label/value 必须为非空字符串。
+
+### 验证记录（本批）
+
+- `npm test` 12 个文件全部通过（含 popup-auth 6 预设断言）；`npx tsc --noEmit` 0 错误；`rm -rf dist && npm run build` 成功后退出码 0；`git diff --check` 通过。
+- 一次性片段验证（T3 前置，node ESM 直连 dayjs，未写成测试文件）：`dayjs('2026年08月17日 20:16', 'YYYY年MM月DD日 HH:mm', true)` strict 解析有效；extract_pattern `(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?::\d{2})?)` 对集思录样本「作者 回复 • 2026-08-17 22:05 • 5856 次浏览」提取出 `2026-08-17 22:05`。
+- 本环境注意：node_modules 为 Windows 平台 esbuild（win32-x64），Linux/WSL 下 tsx/vite 需 `npm install --no-save @esbuild/linux-x64@0.28.2` 补二进制；该补丁不改 package.json。
+
+### 未完成或不能下结论
+
+- 集思录/东财资讯的选择器均为单快照样本（recon 2026-08-17/18 记录），详情页回复分页/懒加载机制、大帖回复、栏目一致性（仅 czqyw/cgspl 双栏目验证）待真机验收；失效模态在 active_paths 内仍是兜底。
+- 雪球 P2-16 真机终验仍未闭环；本批零改动雪球虚拟分页/上下文代码，回归由既有 6 个雪球测试文件把关。
+- 扩展重载后注入不稳定、东财股吧/天天基金（MM-DD 无年份 + 双时间字段）、金融区间预设等仍按计划留待后续批次。
+
+---
+
 ## 2026-08-17 开发/测试交接记录
 
 > 本节是当前未提交工作区的接手基线。此前计划中的勾选项保留历史含义；若与本节冲突，以本节的实际终验状态为准。
@@ -304,8 +339,10 @@
 - [ ] 淘股吧 `taoguba.com.cn`；作为与东方财富股吧独立的平台适配
 - [ ] 天天基金：基金详情、基金讨论/基金吧及与东方财富共用结构的页面分别取证
 - [ ] 东方财富：个股资讯、公告、财富号等页面按页面类型分别验收
+  - 内置适配包 `eastmoney-news.json` v0.1.0 已落地（2026-08-18，仅 finance.eastmoney.com `/a/` 栏目列表，`li[id^='newsTr']`）；真机验收仍欠
 - [ ] 同花顺：在现有 `t.10jqka.com.cn` 基础上扩展个股讨论、资讯等目标页面
 - [ ] 集思录 `jisilu.cn`：主题列表、详情回复及基金/ETF/LOF/QDII 等相关板块
+  - 内置适配包 `jisilu.json` v0.1.0 已落地（2026-08-18，分类列表 + 详情回复，`extract_pattern` 提取全年份时间）；真机验收仍欠
 - [ ] 通达信网页版：先验证公开网页范围、登录/CSP、时间戳、分页和历史深度；不满足条件则不对外承诺
 - [ ] 每个平台凡有资讯/讨论/公告/基金/自选等类别，均按独立信息流上下文过滤并验收
 

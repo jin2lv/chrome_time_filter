@@ -28,7 +28,10 @@ let registrationUpdates = 0
     }),
   },
   runtime: {
-    getManifest: () => ({ content_scripts: [{ js: ['assets/content-loader.js'] }] }),
+    getManifest: () => ({
+      content_scripts: [{ js: ['assets/content-loader.js'] }],
+      optional_host_permissions: ['*://xueqiu.com/*'],
+    }),
     openOptionsPage: async () => {},
   },
   scripting: {

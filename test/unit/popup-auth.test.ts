@@ -24,7 +24,10 @@ let optionsPageOpens = 0
     sendMessage: async () => null,
   },
   runtime: {
-    getManifest: () => ({ content_scripts: [{ js: ['assets/content-loader.js'] }] }),
+    getManifest: () => ({
+      content_scripts: [{ js: ['assets/content-loader.js'] }],
+      optional_host_permissions: ['*://xueqiu.com/*'],
+    }),
     openOptionsPage: async () => { optionsPageOpens++ },
   },
   scripting: {
@@ -64,7 +67,7 @@ const presetButtons = [
 
 assert.equal(authArea.hidden, false, '未授权时应显示授权区域')
 assert.equal(authButton.disabled, false, '授权按钮必须保持可点击')
-assert.equal(presetButtons.length, 3, '应识别三个时间预设按钮')
+assert.equal(presetButtons.length, 6, '应识别适配包驱动的六个时间预设按钮（雪球含金融预设）')
 assert.ok(presetButtons.every((button) => button.disabled), '授权前时间预设应禁用')
 
 authButton.click()

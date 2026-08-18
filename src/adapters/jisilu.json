@@ -1,0 +1,26 @@
+{
+  "version": "0.1.0",
+  "platforms": [
+    {
+      "name": "集思录",
+      "domains": ["jisilu.cn"],
+      "post_selectors": [
+        ".aw-question-list > .aw-item",
+        ".aw-dynamic-topic > .aw-item[id^='answer_list_']"
+      ],
+      "timestamp": {
+        "selector": "span.aw-text-color-999",
+        "type": "absolute",
+        "format": "YYYY-MM-DD HH:mm",
+        "extract_pattern": "(\\d{4}-\\d{2}-\\d{2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)"
+      },
+      "active_paths": ["^/category/", "^/question/", "^/home/explore/sort_type"],
+      "quick_presets": [
+        { "label": "1小时前", "value": "1_hour_ago" },
+        { "label": "今日0点", "value": "today_midnight" },
+        { "label": "昨日0点", "value": "yesterday_midnight" }
+      ],
+      "notes": "DOM 取证于 2026-08-17（无登录态，全程 200）与 2026-08-18 复核：分类主题列表 .aw-question-list > .aw-item，时间在 span.aw-text-color-999 行内文本（作者 回复 • YYYY-MM-DD HH:mm • N 次浏览），全年份绝对时间无跨年歧义；详情回复 .aw-dynamic-topic > .aw-item[id^='answer_list_'] 一次渲染，回复时间在 .aw-dynamic-topic-meta .pull-left.aw-text-color-999。分页为服务端 URL（home/explore/sort_type-*__page-N），URL 即上下文。局限：选择器为单快照样本，大帖回复分页/懒加载机制未验证；裸首页 explore 无时间戳，不启用。"
+    }
+  ]
+}

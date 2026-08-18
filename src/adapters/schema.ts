@@ -68,6 +68,22 @@ function validatePlatform(pl: PlatformAdapter): string[] {
       errs.push(`timestamp.${name} 必须是字符串或 null`)
     }
   }
+  // extract_pattern（可选）：提取时间子串的正则，必须合法
+  if (ts.extract_pattern !== undefined) {
+    if (typeof ts.extract_pattern !== 'string' || !ts.extract_pattern) {
+      errs.push('timestamp.extract_pattern 必须是非空字符串')
+    } else {
+      try {
+        new RegExp(ts.extract_pattern)
+      } catch {
+        errs.push(`timestamp.extract_pattern 不是合法正则: ${ts.extract_pattern}`)
+      }
+    }
+    // 跨字段约束：relative 类型下提取会把相对文本替换为绝对样式子串，跳过相对解析，语义矛盾
+    if (ts.type === 'relative') {
+      errs.push('relative 类型不得声明 timestamp.extract_pattern')
+    }
+  }
   if (ts.type === 'relative') {
     if (!Array.isArray(ts.patterns) || ts.patterns.length === 0) {
       errs.push('relative 类型必须提供 timestamp.patterns')
@@ -93,6 +109,33 @@ function validatePlatform(pl: PlatformAdapter): string[] {
   }
   if (!Array.isArray(pl.quick_presets)) {
     errs.push('quick_presets 必须是数组')
+  } else {
+    pl.quick_presets.forEach((preset, i) => {
+      if (!preset || typeof preset.label !== 'string' || !preset.label) {
+        errs.push(`quick_presets[${i}].label 必须是非空字符串`)
+      }
+      if (!preset || typeof preset.value !== 'string' || !preset.value) {
+        errs.push(`quick_presets[${i}].value 必须是非空字符串`)
+      }
+    })
+  }
+  // active_paths（可选）：pathname 白名单正则，非空字符串数组且必须合法
+  if (pl.active_paths !== undefined) {
+    if (!Array.isArray(pl.active_paths) || pl.active_paths.length === 0) {
+      errs.push('active_paths 必须是非空字符串数组')
+    } else {
+      pl.active_paths.forEach((pattern, i) => {
+        if (typeof pattern !== 'string' || !pattern) {
+          errs.push(`active_paths[${i}] 必须是非空字符串`)
+          return
+        }
+        try {
+          new RegExp(pattern)
+        } catch {
+          errs.push(`active_paths[${i}] 不是合法正则`)
+        }
+      })
+    }
   }
   if (pl.feed_context !== undefined) {
     const feed = pl.feed_context

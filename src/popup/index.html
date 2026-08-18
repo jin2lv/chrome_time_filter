@@ -35,11 +35,7 @@
         <div id="cutoff-panel" class="time-panel">
           <label class="field-label" for="cutoff-input">显示此时间及以前</label>
           <input id="cutoff-input" class="time-input" type="datetime-local" step="60" data-time-control />
-          <div class="presets">
-          <button class="preset" data-preset="1_hour_ago">1小时前</button>
-          <button class="preset" data-preset="today_midnight">今日0点</button>
-          <button class="preset" data-preset="yesterday_midnight">昨日0点</button>
-          </div>
+          <div class="presets" id="cutoff-presets"></div>
         </div>
 
         <div id="window-panel" class="time-panel" hidden>
@@ -77,6 +73,7 @@
         </button>
         <div id="diagnostics-details" hidden>
           <ul id="diagnostics-list"></ul>
+          <button id="copy-diagnostics-btn" class="preset" type="button">复制诊断报告</button>
         </div>
       </section>
 

@@ -557,7 +557,12 @@ function addDiagnostic(kind: TimeDiagnostic['kind'], raw: string): void {
   const normalized = raw.trim().replace(/\s+/g, ' ').slice(0, 80) || '空文本'
   if (diagnostics.some((item) => item.kind === kind && item.raw === normalized)) return
   if (diagnostics.length >= 8) return
-  diagnostics.push({ kind, raw: normalized })
+  diagnostics.push({
+    kind,
+    raw: normalized,
+    page: location.pathname,
+    context: currentContext(),
+  })
 }
 
 // ---------- 适配包失效检测（P1-5）----------
@@ -667,7 +672,25 @@ async function reloadAdapter(): Promise<void> {
   await AdapterManager.loadRemoteFromStorage()
   adapter = AdapterManager.getAdapter(domain)
   if (!adapter) return
+  // 与 init 同样执行白名单判定；页面不在范围内时保持静默退出
+  if (!isPathAllowed(adapter)) {
+    console.log('[时光机] 页面类型不在适配范围，跳过:', location.pathname)
+    adapter = null
+    return
+  }
   reapplyAll()
+}
+
+/** 页面是否在适配包 active_paths 白名单内（未声明时始终允许） */
+function isPathAllowed(platform: PlatformAdapter): boolean {
+  if (!platform.active_paths?.length) return true
+  return platform.active_paths.some((pattern) => {
+    try {
+      return new RegExp(pattern).test(location.pathname)
+    } catch {
+      return false
+    }
+  })
 }
 
 async function init(): Promise<void> {
@@ -677,6 +700,13 @@ async function init(): Promise<void> {
   adapter = AdapterManager.getAdapter(domain)
   if (!adapter) {
     console.log('[时光机] 无适配包，跳过:', domain)
+    return
+  }
+  // active_paths 白名单：声明后仅匹配路径启用过滤与失效检测，其他路径静默退出；
+  // adapter 置 null 使 reloadSettings/reloadAdapter/reapplyAll 等消息通路同样早退
+  if (!isPathAllowed(adapter)) {
+    console.log('[时光机] 页面类型不在适配范围，跳过:', location.pathname)
+    adapter = null
     return
   }
   settings = await getTimeSettings(domain)

@@ -14,7 +14,7 @@ artifacts/
 # 浏览器调试工具目录（Playwright/ClawBrowser 的浏览器 Profile 数据，含 cookies/同步数据，切勿提交）
 .playwright/
 .playwright-cli/
-
+.playwright-mcp/
 # 私钥 / 密钥材料（切勿提交！）
 scripts/keys/
 scripts/*.pem

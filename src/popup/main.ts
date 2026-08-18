@@ -10,7 +10,7 @@
  */
 import { AdapterManager } from '../adapters'
 import { extractDomain, getPrefs, getTimeSettings, setTimeSettings } from '../shared/storage'
-import type { ContentState, TimeSettings } from '../shared/types'
+import type { ContentState, PlatformAdapter, TimeSettings } from '../shared/types'
 import { createIcons, Settings } from 'lucide'
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -36,12 +36,16 @@ const diagnostics = $<HTMLElement>('diagnostics')
 const diagnosticsToggle = $<HTMLButtonElement>('diagnostics-toggle')
 const diagnosticsDetails = $<HTMLDivElement>('diagnostics-details')
 const diagnosticsList = $<HTMLUListElement>('diagnostics-list')
+const copyDiagnosticsBtn = $<HTMLButtonElement>('copy-diagnostics-btn')
 const scopeStatus = $<HTMLParagraphElement>('scope-status')
 
 createIcons({ icons: { Settings } })
 
 let domain = ''
+let hostname = ''
 let tabId: number | undefined
+let adapter: PlatformAdapter | null = null
+let settings: TimeSettings | null = null
 let state: ContentState = {
   enabled: true,
   hasSettings: false,
@@ -78,10 +82,13 @@ async function init(): Promise<void> {
   const tab = await pickTargetTab()
   if (!tab?.id || !tab.url) return
   tabId = tab.id
-  domain = extractDomain(new URL(tab.url).hostname)
+  hostname = new URL(tab.url).hostname
+  domain = extractDomain(hostname)
 
   const isTarget = AdapterManager.hasAdapter(domain)
-  const adapter = AdapterManager.getAdapter(domain)
+  adapter = AdapterManager.getAdapter(domain)
+  // 截止预设按适配包渲染（授权 early-return 之前调用，未授权态按钮存在且被禁用）
+  renderCutoffPresets(adapter)
   siteEl.textContent = `${adapter?.name ?? '未知站点'} ${domain}`
   // P2-2：相对时间平台显示精度提示（±5 分钟）
   const hint = document.getElementById('precision-hint')
@@ -94,7 +101,7 @@ async function init(): Promise<void> {
   syncStrategy(prefs.defaultStrategy)
 
   // 授权检测：目标平台但未授权 → 引导授权
-  const authorized = await isAuthorized(domain)
+  const authorized = await isAuthorized()
   if (isTarget && !authorized) {
     authArea.hidden = false
     toggleBtn.disabled = true
@@ -105,42 +112,67 @@ async function init(): Promise<void> {
 
   // 已授权：读时间设置 + 查询内容脚本状态
   if (isTarget) await ensureContentScriptActive()
-  const settings = await getTimeSettings(domain)
-  if (settings) {
-    syncMode(settings.mode)
-    if (settings.cutoff != null) cutoffInput.value = toLocalInputValue(new Date(settings.cutoff))
-    if (settings.window?.start != null) {
-      windowStartInput.value = toLocalInputValue(new Date(settings.window.start))
-    }
-    if (settings.window?.end != null) {
-      windowEndInput.value = toLocalInputValue(new Date(settings.window.end))
-    }
-    syncStrategy(settings.strategy)
-  }
+  await loadSettingsIntoUI()
   await refreshContentState()
   bindEvents()
 }
 
-async function isAuthorized(d: string): Promise<boolean> {
-  const origin = `*://${d}/*`
-  return chrome.permissions.contains({ origins: [origin] })
+/** 读取存储的时间设置并回显到 Popup 输入（init 与授权成功路径共用） */
+async function loadSettingsIntoUI(): Promise<void> {
+  settings = await getTimeSettings(domain)
+  if (!settings) return
+  syncMode(settings.mode)
+  if (settings.cutoff != null) cutoffInput.value = toLocalInputValue(new Date(settings.cutoff))
+  if (settings.window?.start != null) {
+    windowStartInput.value = toLocalInputValue(new Date(settings.window.start))
+  }
+  if (settings.window?.end != null) {
+    windowEndInput.value = toLocalInputValue(new Date(settings.window.end))
+  }
+  syncStrategy(settings.strategy)
+}
+
+/**
+ * 授权所需的 origin 列表：以实际 hostname 构造（hostname 带 www 且与 apex 不同时一并请求 apex），
+ * 并收敛到 manifest optional_host_permissions 已声明的清单——request 无法授予未声明 origin，
+ * 派生超出声明会形成授权死结；全部被过滤时回退 apex。
+ */
+function authOrigins(): string[] {
+  const manifest = chrome.runtime.getManifest() as { optional_host_permissions?: string[] }
+  const declared = new Set(manifest.optional_host_permissions ?? [])
+  const apexOrigin = `*://${extractDomain(hostname)}/*`
+  const origins = [`*://${hostname}/*`, apexOrigin]
+  const filtered = origins.filter((origin) => declared.has(origin))
+  return filtered.length > 0 ? filtered : [apexOrigin]
+}
+
+async function isAuthorized(): Promise<boolean> {
+  const origins = authOrigins()
+  for (const origin of origins) {
+    if (!(await chrome.permissions.contains({ origins: [origin] }))) return false
+  }
+  return origins.length > 0
 }
 
 async function requestAuth(): Promise<void> {
   authBtn.disabled = true
   setAuthStatus('正在请求 Chrome 授权…')
   try {
-    const granted = await chrome.permissions.request({ origins: [`*://${domain}/*`] })
+    const granted = await chrome.permissions.request({ origins: authOrigins() })
     if (!granted) {
       setAuthStatus('浏览器未授予该站点权限，请重试。', true)
       return
     }
-    const verified = await isAuthorized(domain)
+    const verified = await isAuthorized()
     if (!verified) {
       setAuthStatus('Chrome 未确认站点权限，请重新加载扩展后重试。', true)
       return
     }
     await ensureContentScriptActive()
+    // 与 init 已授权路径同构：重读设置回显、隐藏授权区、刷新内容脚本状态
+    authArea.hidden = true
+    await loadSettingsIntoUI()
+    await refreshContentState()
     setAuthStatus('已授权，过滤脚本已启动。')
     setTimeControlsDisabled(false)
     bindEvents()
@@ -167,17 +199,17 @@ async function ensureContentScriptActive(): Promise<void> {
 
   const js = getContentScriptJs()
   if (js.length === 0) throw new Error('扩展构建中缺少内容脚本')
-  const match = `*://${domain}/*`
+  const matches = authOrigins()
   const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [CONTENT_SCRIPT_ID] })
 
   if (existing.length > 0) {
-    const matches = [...new Set([...(existing[0].matches ?? []), match])]
+    const all = [...new Set([...(existing[0].matches ?? []), ...matches])]
     await chrome.scripting.updateContentScripts([
-      { id: CONTENT_SCRIPT_ID, matches, js, runAt: 'document_idle', persistAcrossSessions: true },
+      { id: CONTENT_SCRIPT_ID, matches: all, js, runAt: 'document_idle', persistAcrossSessions: true },
     ])
   } else {
     await chrome.scripting.registerContentScripts([
-      { id: CONTENT_SCRIPT_ID, matches: [match], js, runAt: 'document_idle', persistAcrossSessions: true },
+      { id: CONTENT_SCRIPT_ID, matches, js, runAt: 'document_idle', persistAcrossSessions: true },
     ])
   }
 
@@ -249,6 +281,41 @@ function bindEvents(): void {
     diagnosticsToggle.setAttribute('aria-expanded', String(!expanded))
     diagnosticsDetails.hidden = expanded
   })
+  copyDiagnosticsBtn.addEventListener('click', () => void copyDiagnostics())
+}
+
+/** 复制脱敏诊断报告：仅平台/适配包版本、模式边界、计数与逐条 {kind, page, context, raw, 回退行为} */
+function fmtBoundaryTs(ts: number | null | undefined): string {
+  return ts == null ? '-' : new Date(ts).toLocaleString()
+}
+
+function copyDiagnostics(): void {
+  const adapterVersion = AdapterManager.getPackageFor(domain)?.version ?? '?'
+  const boundary = settings?.mode === 'window'
+    ? `窗口 ${fmtBoundaryTs(settings.window?.start)} .. ${fmtBoundaryTs(settings.window?.end)}`
+    : `截止 ${fmtBoundaryTs(settings?.cutoff)}`
+  const lines = [
+    `时光机诊断报告 | 平台=${adapter?.name ?? '未知'} | 适配包内置版本=${adapterVersion}`,
+    `模式=${settings?.mode ?? '未设定'} | 边界=${boundary}`,
+    `已过滤 ${state.filteredCount} 条 | ${state.unparseableCount} 条无法解析`,
+    ...state.diagnostics.map(
+      (item) =>
+        `- ${item.kind === 'post' ? '帖子' : '评论'} | 页面=${item.page ?? '-'} | 上下文=${item.context ?? '-'} | 原始时间=${item.raw || '无时间文本'} | 回退行为=默认显示`,
+    ),
+  ]
+  const text = lines.join('\n')
+  navigator.clipboard
+    ?.writeText(text)
+    .then(() => {
+      const original = copyDiagnosticsBtn.textContent
+      copyDiagnosticsBtn.textContent = '已复制'
+      setTimeout(() => {
+        copyDiagnosticsBtn.textContent = original
+      }, 1200)
+    })
+    .catch(() => {
+      copyDiagnosticsBtn.textContent = '复制失败'
+  })
 }
 
 async function saveTimeSettings(): Promise<void> {
@@ -304,6 +371,31 @@ function syncStrategy(strategy: TimeSettings['strategy']): void {
   if (radio) radio.checked = true
 }
 
+/** 无适配包时的截止预设兜底（与适配包驱动同构） */
+const FALLBACK_CUTOFF_PRESETS: { label: string; value: string }[] = [
+  { label: '1小时前', value: '1_hour_ago' },
+  { label: '今日0点', value: 'today_midnight' },
+  { label: '昨日0点', value: 'yesterday_midnight' },
+]
+
+/** 按适配包 quick_presets 渲染截止预设按钮；无适配包时用兜底三项 */
+function renderCutoffPresets(adapterOrNull: PlatformAdapter | null): void {
+  const container = $<HTMLDivElement>('cutoff-presets')
+  const presets = adapterOrNull?.quick_presets?.length
+    ? adapterOrNull.quick_presets
+    : FALLBACK_CUTOFF_PRESETS
+  container.replaceChildren(
+    ...presets.map((preset) => {
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'preset'
+      btn.dataset.preset = preset.value
+      btn.textContent = preset.label
+      return btn
+    }),
+  )
+}
+
 function resolvePreset(preset: string): number {
   const now = Date.now()
   const dayStart = (): number => {
@@ -315,6 +407,22 @@ function resolvePreset(preset: string): number {
     case '1_hour_ago': return now - 60 * 60 * 1000
     case 'today_midnight': return dayStart()
     case 'yesterday_midnight': return dayStart() - 24 * 60 * 60 * 1000
+    case 'today_0915': {
+      const d = new Date()
+      d.setHours(9, 15, 0, 0)
+      return d.getTime()
+    }
+    case 'today_0930': {
+      const d = new Date()
+      d.setHours(9, 30, 0, 0)
+      return d.getTime()
+    }
+    case 'yesterday_1500': {
+      const d = new Date()
+      d.setDate(d.getDate() - 1)
+      d.setHours(15, 0, 0, 0)
+      return d.getTime()
+    }
     default: return now
   }
 }
@@ -361,7 +469,10 @@ function render(): void {
   diagnosticsList.replaceChildren(
     ...state.diagnostics.map((item) => {
       const li = document.createElement('li')
-      li.textContent = `${item.kind === 'comment' ? '评论' : '帖子'}：${item.raw || '无时间文本'}`
+      const where = [item.page ? item.page : null, item.context ? `(${item.context})` : null]
+        .filter(Boolean)
+        .join(' ')
+      li.textContent = `${item.kind === 'comment' ? '评论' : '帖子'}${where ? ` ${where}` : ''}：${item.raw || '无时间文本'}`
       return li
     }),
   )

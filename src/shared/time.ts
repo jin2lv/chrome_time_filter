@@ -120,8 +120,13 @@ export function parseAbsoluteTime(
   return null
 }
 
+/** extract_pattern 编译缓存：避免每个帖子重复编译（同一正则复用实例） */
+const extractPatternCache = new Map<string, RegExp>()
+
 /**
  * 统一入口：先相对后绝对
+ * 若适配包声明 extract_pattern，先对原始文本正则提取时间子串
+ * （命中取 match[0]，未命中回退原文本），再走解析流程。
  * @returns 绝对时间（epoch ms）或 null
  */
 export function parseTimestamp(
@@ -130,11 +135,21 @@ export function parseTimestamp(
   anchor: number,
 ): RelativeTimeResult | null {
   const ts = adapter.timestamp
+  let extractText = text
+  if (ts.extract_pattern) {
+    let re = extractPatternCache.get(ts.extract_pattern)
+    if (!re) {
+      re = new RegExp(ts.extract_pattern)
+      extractPatternCache.set(ts.extract_pattern, re)
+    }
+    const m = extractText.match(re)
+    if (m) extractText = m[0]
+  }
   if (ts.type === 'relative' && ts.patterns) {
-    const rel = parseRelativeTime(text, ts.patterns, anchor)
+    const rel = parseRelativeTime(extractText, ts.patterns, anchor)
     if (rel !== null) return { timestamp: rel, isRelative: true }
   }
-  const abs = parseAbsoluteTime(text, ts.format)
+  const abs = parseAbsoluteTime(extractText, ts.format)
   if (abs !== null) return { timestamp: abs, isRelative: false }
   return null
 }

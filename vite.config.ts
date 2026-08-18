@@ -58,6 +58,9 @@ const manifest = defineManifest({
   optional_host_permissions: [
     '*://xueqiu.com/*',
     '*://t.10jqka.com.cn/*',
+    '*://finance.eastmoney.com/*',
+    '*://jisilu.cn/*',
+    '*://www.jisilu.cn/*',
   ],
 
   // CRXJS turns the declared content script into a small loader which imports
@@ -66,7 +69,13 @@ const manifest = defineManifest({
   web_accessible_resources: [
     {
       resources: ['assets/*'],
-      matches: ['*://xueqiu.com/*', '*://t.10jqka.com.cn/*'],
+      matches: [
+        '*://xueqiu.com/*',
+        '*://t.10jqka.com.cn/*',
+        '*://finance.eastmoney.com/*',
+        '*://jisilu.cn/*',
+        '*://www.jisilu.cn/*',
+      ],
     },
   ],
 
