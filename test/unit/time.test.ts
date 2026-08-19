@@ -62,6 +62,20 @@ const yestExpected = new Date(now2.getFullYear(), now2.getMonth(), now2.getDate(
 assert.ok(yestTs !== null && Math.abs(yestTs - yestExpected) < 1000, `昨天 HH:mm: got ${yestTs} expected ${yestExpected}`)
 console.log('✓ 今天/昨天 HH:mm（雪球评论格式，P2-4）')
 
+// ---- H1 回归：relative 适配包下「昨天 HH:mm」不得被 ^昨天 相对规则吞掉时刻 ----
+// 雪球评论格式「昨天 16:23 · 江苏」：应解析为昨天 16:23（绝对），而非锚点时刻前一天同一时刻
+const yesterdayCommentAnchor = new Date('2026-08-19T13:00:00+08:00').getTime()
+const y = parseTimestamp('昨天 16:23 · 江苏', adapter, yesterdayCommentAnchor)
+assert.ok(y !== null && !y.isRelative, '「昨天 HH:mm」应走绝对解析（isRelative=false）')
+assert.strictEqual(
+  y!.timestamp,
+  new Date('2026-08-18T16:23:00+08:00').getTime(),
+  `「昨天 16:23」应解析为昨天 16:23，实际 ${new Date(y!.timestamp).toLocaleString('zh-CN')}`,
+)
+// 纯「昨天」（列表帖子）仍走相对锚定
+const yPure = parseTimestamp('昨天 · 来自Android', adapter, yesterdayCommentAnchor)
+assert.ok(yPure !== null && yPure.isRelative, '纯「昨天」应保持相对锚定')
+
 // ---- parseTimestamp 统一入口 ----
 // 雪球适配包是 relative：相对时间应命中相对分支
 const rel = parseTimestamp('5小时前', adapter, anchor)

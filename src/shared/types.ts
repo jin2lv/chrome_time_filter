@@ -137,6 +137,8 @@ export type RuntimeMessage =
   | { type: 'QUERY_STATE' }
   | { type: 'ADAPTER_MISMATCH'; platform: string }
   | { type: 'ADAPTERS_UPDATED' }
+  /** 站点授权被撤销：content script 收到后停止过滤并恢复 DOM（幂等） */
+  | { type: 'PERMISSION_REVOKED' }
 
 /** Popup 查询 Content Script 状态的响应 */
 export interface ContentState {

@@ -1,5 +1,36 @@
 # TimeMachine 时光机 — 开发计划与验证清单
 
+## 2026-08-19 开发/测试交接记录（深度 Review 修复批次：H1-H5 / M1-M6）
+
+> 本节记录 2026-08-19 全量代码深度 review 后的修复批次：5 项确认 bug（H1-H5）与 6 项中优先级问题（M1-M6）。全部为 bug 修复与性能收拢，未改变平台适配语义与既有架构；新增 1 个运行时消息（`PERMISSION_REVOKED`）。评审问题清单原文见会话记录（H1-H5、M1-M6 编号一一对应）。
+
+### 本批完成项
+
+- **H1 「昨天 HH:mm」评论时间误匹配**：雪球适配包相对 pattern `^昨天` 改为 `^昨天$`。此前评论「昨天 16:23 · 江苏」被相对规则吞掉时刻（解析为锚点前一天同一时刻，误差随浏览时刻游移数小时），在「昨日 15:00」（昨日收盘前）等边界预设下漏过滤/误过滤；修复后该格式走绝对解析，纯「昨天」列表帖仍走相对锚定。`time.test.ts` 新增回归断言。
+- **H2 授权撤销生命周期闭环**：新增 `PERMISSION_REVOKED` 消息（`src/shared/types.ts` 同步，AGENTS.md 消息协议清单已更新）；background 监听 `permissions.onRemoved` → 收敛动态内容脚本注册（注销已撤销 origin）+ 向受影响域名全部 tab 广播停用；content script 新增幂等 `stopFiltering()`（断开 observer、移除事件监听、取消定时器、恢复全部被过滤元素/占位条/banner、上报 `FILTER_STATE_CHANGED=false`）。此前设置页「移除授权」后已注入脚本继续过滤直至刷新。
+- **H3 `strip_pattern` 输入验证补齐**：schema 增加正则合法性校验（与 `extract_pattern` 同级，非法正则远程包不再能进入运行时）；`time.ts` 新增 `applyStripPattern` 编译失败静默跳过 + warn，不再抛异常中断过滤链。`xueqiu-adapter.test.ts` 新增拒绝/放行断言。
+- **H4 失效模态误报收敛**：5s 零匹配检测增加两层豁免——命中评论结构（详情评论页为合法过滤目标）不视为失效；非信息流承载页（`feed_context.path_patterns` / 虚拟分页列表容器均不命中的页面，如个人主页/搜索/正文）不弹「页面结构已变化」模态。首页改版场景语义不变（mismatch 测试原样通过）。
+- **H5 虚拟分页重扫风暴节流**：observer 触发的 `reapplyAll` 增加 500ms 节流（`lastScanReapplyAt`），消除 create 失败（列表/分页 DOM 未就绪）窗口期内每批 DOM 变化触发全量重扫的性能问题。
+- **M1** 相对时间正则编译缓存（`relativePatternCache`，与 `extractPatternCache` 策略一致），逐帖不再重复 `new RegExp`。
+- **M2** 引导页仅在 `install` 打开；扩展 update 不再弹引导页（对齐 PRD §5.1）。
+- **M3** `report()` 按 `count|unparseable|context|completeness|scan` 内容去重；悬浮条重构为「root + 单一内容节点」并 250ms 节流，滚动加载不再逐帖 IPC 与 banner DOM 重建。
+- **M4** Popup 非目标站点（无适配包域名）禁用全部时间控件；保存设置后 content script 未注入（QUERY_STATE 失败）时提示「当前页面尚未加载过滤脚本」。
+- **M5** 隐藏/折叠/重应用统一经 `dataset.tmOrigDisplay(+Priority)` 保存并还原元素原始 display（含 inline 样式与优先级），与虚拟分页 `nativeDisplays` 恢复模式对齐，不再粗暴 `display=''`。
+- **M6** `TOGGLE_FILTER` 增加 `adapter && settings` 守卫：白名单外/未设定时间的页面不再翻转图标状态与实况脱节。
+
+### 验证记录（本批）
+
+- `npm test` 12 个测试文件全部通过（新增断言：time「昨天 HH:mm」、xueqiu-adapter strip_pattern schema、content 第 8 节 PERMISSION_REVOKED 8 项、adapters-update onRemoved 广播/注销；window-content/content 的 banner 等待窗口按 250ms 节流调整）。
+- `npx tsc --noEmit` 0 错误；`rm -rf dist && npm run build` 成功后退出码 0；`git diff --check` 通过。
+- Linux/WSL 环境仍按既有记录补装 `@esbuild/linux-x64@0.28.2`（--no-save，不改 package.json）。
+
+### 未完成或不能下结论
+
+- 雪球真机回归（个股六类别、首页上下文、详情评论、失效模态误报收敛的实机复核）仍欠；本批零改动虚拟分页扫描核心，回归由既有 6 个雪球测试文件把关。
+- P2-16 雪球终验、P2-17~P2-20 通用能力、P2-21 其他金融平台、P2-22/23 发布准备的待办状态不因本批改变；集思录/东财资讯真机验收仍欠。
+
+---
+
 ## 2026-08-18 开发/测试交接记录（有限开闸批次）
 
 > 本节记录「有限开闸」批次（`.kilo/plans/1787062802798-limited-unblock-jisilu-eastmoney-news.md`）的落地状态。该批次因 P2-16 雪球终验被风控/真机条件阻塞而启动，只做不动雪球核心引擎的通用增强与两个零跨年歧义平台的适配；继续遵守「雪球验收未通过前不并行启动其他平台正式适配开发」的闸门约束，本批次新平台仅内置适配包，真机验收仍欠。

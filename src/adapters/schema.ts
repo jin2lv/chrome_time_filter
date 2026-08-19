@@ -68,6 +68,18 @@ function validatePlatform(pl: PlatformAdapter): string[] {
       errs.push(`timestamp.${name} 必须是字符串或 null`)
     }
   }
+  // strip_pattern（可选）：前置剥离正则，必须合法（非法正则会在运行时抛异常中断过滤）
+  if (ts.strip_pattern !== undefined && ts.strip_pattern !== null) {
+    if (typeof ts.strip_pattern !== 'string' || !ts.strip_pattern) {
+      errs.push('timestamp.strip_pattern 必须是非空字符串')
+    } else {
+      try {
+        new RegExp(ts.strip_pattern)
+      } catch {
+        errs.push(`timestamp.strip_pattern 不是合法正则: ${ts.strip_pattern}`)
+      }
+    }
+  }
   // extract_pattern（可选）：提取时间子串的正则，必须合法
   if (ts.extract_pattern !== undefined) {
     if (typeof ts.extract_pattern !== 'string' || !ts.extract_pattern) {

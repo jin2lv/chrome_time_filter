@@ -16,7 +16,7 @@
           { "regex": "^刚刚", "unit": "second", "multiplier": 0 },
           { "regex": "^(\\d+)分钟前", "unit": "minute", "multiplier": 1 },
           { "regex": "^(\\d+)小时前", "unit": "hour", "multiplier": 1 },
-          { "regex": "^昨天", "unit": "day", "multiplier": 1 },
+          { "regex": "^昨天$", "unit": "day", "multiplier": 1 },
           { "regex": "^(\\d+)天前", "unit": "day", "multiplier": 1 }
         ],
         "attr": null

@@ -43,10 +43,12 @@ const messageListeners: ((msg: unknown, sender?: unknown, sendResponse?: unknown
 let lastReportedCount = -1
 let lastReportedUnparseable = -1
 
+const sentMessages: Array<Record<string, unknown>> = []
 const chromeMock = {
   runtime: {
     onMessage: { addListener: (fn: typeof messageListeners[number]) => messageListeners.push(fn) },
     sendMessage: async (msg: any) => {
+      sentMessages.push(msg)
       if (msg?.type === 'FILTER_COUNT_UPDATED') {
         lastReportedCount = msg.count
         lastReportedUnparseable = msg.unparseable
@@ -239,7 +241,7 @@ check('切回 show：恢复 1 条新评论被过滤', cmtHidden === 1, `got ${cm
 console.log('7. 悬浮提示条（P2-8）')
 storageMap.set('prefs', { commentNoTime: 'show', floatingBanner: true })
 ;(messageListeners[0] as (m: unknown) => void)({ type: 'TIME_SETTINGS_UPDATED', domain: 'xueqiu.com', settings: storageMap.get('timeSettings.xueqiu.com') })
-await new Promise((r) => setTimeout(r, 100))
+await new Promise((r) => setTimeout(r, 450)) // 超过 updateBanner 250ms 节流窗口
 let banner = document.querySelector('.tm-banner')
 check('悬浮条已注入', !!banner, '未找到 .tm-banner')
 check(
@@ -252,7 +254,32 @@ await new Promise((r) => setTimeout(r, 50))
 check('点击关闭后悬浮条移除', !document.querySelector('.tm-banner'))
 storageMap.set('prefs', { commentNoTime: 'show', floatingBanner: false })
 ;(messageListeners[0] as (m: unknown) => void)({ type: 'TIME_SETTINGS_UPDATED', domain: 'xueqiu.com', settings: storageMap.get('timeSettings.xueqiu.com') })
-await new Promise((r) => setTimeout(r, 100))
+await new Promise((r) => setTimeout(r, 400))
 check('关闭开关后不注入', !document.querySelector('.tm-banner'))
+
+// 8. 权限撤销（H2）：恢复全部 DOM + 断开观察器 + 不再过滤新帖
+console.log('8. 权限撤销（PERMISSION_REVOKED，H2 修复）')
+sentMessages.length = 0
+;(messageListeners[0] as (m: unknown) => void)({ type: 'PERMISSION_REVOKED' })
+await new Promise((r) => setTimeout(r, 50))
+const revokedHidden = [...document.querySelectorAll('.timeline__item')].filter(
+  (p) => (p as HTMLElement).style.display === 'none',
+).length
+check('撤销后全部帖子恢复显示', revokedHidden === 0, `got ${revokedHidden}`)
+check('折叠占位条已清除', document.querySelectorAll('.tm-collapsed').length === 0)
+check('悬浮条已移除', !document.querySelector('.tm-banner'))
+check(
+  '已上报关闭状态（FILTER_STATE_CHANGED=false）',
+  sentMessages.some(
+    (m) => (m as { type?: string; enabled?: boolean })?.type === 'FILTER_STATE_CHANGED' && (m as { enabled?: boolean })?.enabled === false,
+  ),
+)
+// 撤销后新增的帖子不再被过滤（观察器已断开）
+const revokedNew = document.createElement('article')
+revokedNew.className = 'timeline__item'
+revokedNew.innerHTML = '<a class="date-and-source">仅5秒前</a>'
+document.body.appendChild(revokedNew)
+await new Promise((r) => setTimeout(r, 150))
+check('撤销后新帖子不被过滤', revokedNew.style.display !== 'none', revokedNew.style.display)
 
 console.log(`\nContent Script 行为测试完成: ${pass} 项通过`)

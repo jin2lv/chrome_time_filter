@@ -38,6 +38,10 @@ const mockFetch = (globalThis as Record<string, unknown>).fetch
 const sendMessages: unknown[] = []
 const alarmsCreated: unknown[] = []
 const contentScriptUpdates: Array<{ js?: string[] }> = []
+const unregistered: unknown[] = []
+// 授权状态集：模拟用户撤销授权后 contains 返回 false
+let authorizedOrigins = ['*://xueqiu.com/*']
+let removedListener: ((removed: { origins: string[] }) => void) | null = null
 
 ;(globalThis as Record<string, unknown>).chrome = {
   runtime: {
@@ -58,12 +62,13 @@ const contentScriptUpdates: Array<{ js?: string[] }> = []
     updateContentScripts: async (scripts: Array<{ js?: string[] }>) => {
       contentScriptUpdates.push(...scripts)
     },
-    unregisterContentScripts: async () => {},
+    unregisterContentScripts: async (details: unknown) => { unregistered.push(details) },
   },
   permissions: {
-    getAll: async () => ({ origins: ['*://xueqiu.com/*'] }),
-    contains: async ({ origins }: { origins: string[] }) => origins.includes('*://xueqiu.com/*'),
+    getAll: async () => ({ origins: authorizedOrigins }),
+    contains: async ({ origins }: { origins: string[] }) => origins.every((o) => authorizedOrigins.includes(o)),
     onAdded: { addListener: () => {} },
+    onRemoved: { addListener: (cb: (removed: { origins: string[] }) => void) => { removedListener = cb } },
   },
   alarms: {
     create: async (name: string, opts: unknown) => { alarmsCreated.push({ name, opts }) },
@@ -173,6 +178,19 @@ check(
   contentScriptUpdates.some((script) => script.js?.[0] === 'assets/current-loader.js'),
   JSON.stringify(contentScriptUpdates),
 )
+
+// 2g. 权限撤销（H2）：收敛注册（注销已撤销 origin）+ 向受影响标签页广播停用
+check('onRemoved 监听器已注册', removedListener !== null)
+authorizedOrigins = []
+sendMessages.length = 0
+removedListener?.({ origins: ['*://xueqiu.com/*'] })
+await new Promise((r) => setTimeout(r, 50))
+check(
+  '撤销后广播 PERMISSION_REVOKED',
+  sendMessages.some((m) => (m as { type?: string })?.type === 'PERMISSION_REVOKED'),
+  JSON.stringify(sendMessages),
+)
+check('撤销后注销已注册的内容脚本', unregistered.length > 0, JSON.stringify(unregistered))
 
 // 恢复 fetch
 ;(globalThis as Record<string, unknown>).fetch = mockFetch

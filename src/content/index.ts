@@ -44,6 +44,7 @@ let virtualContextValue = ''
 let virtualRestartTimer: ReturnType<typeof setTimeout> | null = null
 let virtualTransitionActive = false
 let virtualTransitionId = 0
+let lastScanReapplyAt = 0 // 虚拟分页 DOM 未就绪时对 reapplyAll 的节流时间戳
 let feedContextValue = ''
 let feedRestartTimer: ReturnType<typeof setTimeout> | null = null
 let completeness: ContentCompleteness = 'complete'
@@ -112,12 +113,37 @@ function decidePost(el: HTMLElement): PostDecision {
   return shouldFilter(parsed.timestamp) ? 'filtered' : 'include'
 }
 
+/** 隐藏前保存元素原始 display（恢复时还原，避免丢失站点自带 inline 样式） */
+function saveOriginalDisplay(el: HTMLElement): void {
+  if (el.dataset.tmOrigDisplay !== undefined) return
+  const value = el.style.getPropertyValue('display')
+  const priority = el.style.getPropertyPriority('display')
+  el.dataset.tmOrigDisplay = value
+  el.dataset.tmOrigDisplayPriority = priority
+}
+
+/** 恢复元素原始 display 并清理标记 */
+function restoreOriginalDisplay(el: HTMLElement): void {
+  const value = el.dataset.tmOrigDisplay
+  if (value !== undefined) {
+    const priority = el.dataset.tmOrigDisplayPriority || ''
+    if (value) el.style.setProperty('display', value, priority)
+    else el.style.removeProperty('display')
+    delete el.dataset.tmOrigDisplay
+    delete el.dataset.tmOrigDisplayPriority
+  } else {
+    el.style.display = ''
+  }
+}
+
 function hide(el: HTMLElement): void {
+  saveOriginalDisplay(el)
   el.style.display = 'none'
 }
 
 /** 折叠：占位条可点击展开（P2 完善交互，P1 提供基本版） */
 function collapse(el: HTMLElement): void {
+  saveOriginalDisplay(el)
   const ph = document.createElement('div')
   ph.className = 'tm-collapsed'
   ph.textContent = '⏳ 此帖被时光机过滤'
@@ -126,7 +152,7 @@ function collapse(el: HTMLElement): void {
     'border:1px dashed rgba(128,128,128,.4);border-radius:8px;cursor:pointer;' +
     'font-size:13px;color:#888;text-align:center;'
   ph.addEventListener('click', () => {
-    el.style.display = ''
+    restoreOriginalDisplay(el)
     ph.remove()
   })
   el.parentNode?.insertBefore(ph, el.nextSibling)
@@ -219,6 +245,7 @@ function scanExisting(): void {
 /** 重应用（时间设置变化 / 开关切换）：重置后全量重扫 */
 function reapplyAll(): void {
   if (!adapter) return
+  lastScanReapplyAt = Date.now()
   if (virtualRestartTimer) clearTimeout(virtualRestartTimer)
   virtualRestartTimer = null
   virtualTransitionActive = false
@@ -226,12 +253,12 @@ function reapplyAll(): void {
   virtualPagination?.destroy()
   virtualPagination = null
   virtualContextValue = ''
-  // 恢复所有标记元素
+  // 恢复所有标记元素（还原原始 display）
   document
     .querySelectorAll(`[${FILTERED_ATTR}="1"]`)
     .forEach((el) => {
       const htmlEl = el as HTMLElement
-      htmlEl.style.display = ''
+      restoreOriginalDisplay(htmlEl)
       delete htmlEl.dataset[FILTERED_FLAG]
     })
   // 清除折叠占位条
@@ -397,7 +424,20 @@ function handleVirtualContextClick(event: Event): void {
   scheduleVirtualContextRestart(trigger.textContent?.trim() ?? '')
 }
 
+let lastReportKey = ''
+
+/** 上报过滤状态；内容未变化时跳过（滚动加载中避免逐帖 IPC 与 banner 重建） */
 function report(): void {
+  const key = [
+    filteredCount,
+    unparseableCount,
+    currentContext(),
+    completeness,
+    scanProgress?.state ?? '',
+    scanProgress?.scannedPages ?? 0,
+  ].join('|')
+  if (key === lastReportKey) return
+  lastReportKey = key
   chrome.runtime
     .sendMessage({
       type: 'FILTER_COUNT_UPDATED',
@@ -414,6 +454,7 @@ function report(): void {
 // ---------- 悬浮提示条（P2-8）----------
 
 let bannerEl: HTMLElement | null = null
+let bannerTimer: ReturnType<typeof setTimeout> | null = null
 
 function fmtCutoff(ts: number): string {
   const d = new Date(ts)
@@ -421,47 +462,60 @@ function fmtCutoff(ts: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-function updateBanner(): void {
-  const hasBoundary = settings?.mode === 'window'
-    ? settings.window?.start != null && settings.window.end != null
-    : settings?.cutoff != null
-  if (!floatingBanner || !settings || !hasBoundary) {
-    bannerEl?.remove()
-    bannerEl = null
-    return
-  }
-  if (!bannerEl) {
-    bannerEl = document.createElement('div')
-    bannerEl.className = 'tm-banner'
-    bannerEl.style.cssText =
-      'position:fixed;right:16px;bottom:16px;z-index:999998;max-width:320px;' +
-      'background:rgba(20,20,20,.88);color:#fff;border-radius:10px;' +
-      'padding:10px 14px;font-size:12px;line-height:1.6;box-shadow:0 4px 16px rgba(0,0,0,.25);' +
-      'backdrop-filter:blur(4px);'
-    const close = document.createElement('button')
-    close.textContent = '×'
-    close.style.cssText =
-      'position:absolute;top:4px;right:6px;background:none;border:none;color:#aaa;' +
-      'font-size:14px;cursor:pointer;padding:2px 4px;'
-    close.addEventListener('click', () => {
-      bannerEl?.remove()
-      bannerEl = null
-    })
-    bannerEl.appendChild(close)
-    document.body.appendChild(bannerEl)
-  }
-  const content = document.createElement('div')
-  const boundary = settings.mode === 'window'
-    ? `区间: ${fmtCutoff(settings.window!.start!)} 至 ${fmtCutoff(settings.window!.end!)}`
-    : `截止: ${fmtCutoff(settings.cutoff!)}`
-  content.textContent =
+function bannerText(): string {
+  const boundary = settings!.mode === 'window'
+    ? `区间: ${fmtCutoff(settings!.window!.start!)} 至 ${fmtCutoff(settings!.window!.end!)}`
+    : `截止: ${fmtCutoff(settings!.cutoff!)}`
+  return (
     `⏳ 时光机已激活 | ${boundary} | 已过滤 ${filteredCount} 条` +
     (unparseableCount > 0 ? `（${unparseableCount} 条无法解析）` : '') +
-    (completeness === 'loaded-only' ? ' | 仅过滤已加载内容' : '')
-    + (scanProgress ? ` | 已扫描 ${scanProgress.scannedPages} 个原始页` : '')
-  bannerEl.appendChild(content)
-  // 保留 [关闭按钮, 最新内容]，移除更早的内容
-  while (bannerEl.children.length > 2) bannerEl.removeChild(bannerEl.children[1])
+    (completeness === 'loaded-only' ? ' | 仅过滤已加载内容' : '') +
+    (scanProgress ? ` | 已扫描 ${scanProgress.scannedPages} 个原始页` : '')
+  )
+}
+
+function removeBannerUi(): void {
+  bannerEl?.remove()
+  bannerEl = null
+}
+
+/** 渲染（或移除）悬浮条；高频调用经 250ms 节流合并为一次 DOM 更新 */
+function updateBanner(): void {
+  if (bannerTimer) return
+  bannerTimer = setTimeout(() => {
+    bannerTimer = null
+    const hasBoundary = settings?.mode === 'window'
+      ? settings.window?.start != null && settings.window.end != null
+      : settings?.cutoff != null
+    if (!floatingBanner || !settings || !hasBoundary) {
+      removeBannerUi()
+      return
+    }
+    if (!bannerEl) {
+      bannerEl = document.createElement('div')
+      bannerEl.className = 'tm-banner'
+      bannerEl.style.cssText =
+        'position:fixed;right:16px;bottom:16px;z-index:999998;max-width:320px;' +
+        'background:rgba(20,20,20,.88);color:#fff;border-radius:10px;' +
+        'padding:10px 14px;font-size:12px;line-height:1.6;box-shadow:0 4px 16px rgba(0,0,0,.25);' +
+        'backdrop-filter:blur(4px);'
+      const close = document.createElement('button')
+      close.textContent = '×'
+      close.style.cssText =
+        'position:absolute;top:4px;right:6px;background:none;border:none;color:#aaa;' +
+        'font-size:14px;cursor:pointer;padding:2px 4px;'
+      close.addEventListener('click', () => {
+        bannerEl?.remove()
+        bannerEl = null
+      })
+      const content = document.createElement('div')
+      content.className = 'tm-banner-content'
+      bannerEl.append(close, content)
+      document.body.appendChild(bannerEl)
+    }
+    const content = bannerEl.querySelector<HTMLElement>('.tm-banner-content')
+    if (content) content.textContent = bannerText()
+  }, 250)
 }
 
 // ---------- MutationObserver ----------
@@ -472,13 +526,18 @@ function startObserver(): void {
     if (virtualContextChanged()) return
     if (feedContextChanged()) return
     // 类别响应可能慢于重启等待窗口；原生列表与分页真正到位后再重建。
+    // 节流：create 失败（DOM 未就绪）时避免每批 DOM 变化都触发全量重扫。
     if (
       !virtualTransitionActive &&
       !virtualPagination?.isActive() &&
       virtualContextValue &&
       virtualPaginationDomReady()
     ) {
-      reapplyAll()
+      const now = Date.now()
+      if (now - lastScanReapplyAt >= 500) {
+        lastScanReapplyAt = now
+        reapplyAll()
+      }
       return
     }
     for (const m of mutations) {
@@ -567,6 +626,24 @@ function addDiagnostic(kind: TimeDiagnostic['kind'], raw: string): void {
 
 // ---------- 适配包失效检测（P1-5）----------
 
+/** 页面是否命中评论结构（详情评论页是合法过滤目标，失效检测应豁免） */
+function hasCommentMatch(): boolean {
+  return (
+    !!adapter?.comment_selectors?.length &&
+    adapter.comment_selectors.some((sel) => document.querySelector(sel) !== null)
+  )
+}
+
+/** 页面是否为信息流承载页（首页类别上下文 / 虚拟分页列表页），改版时才会反馈为「选择器失效」 */
+function isFeedPage(): boolean {
+  if (feedContextEnabled()) return true
+  const vp = adapter?.virtual_pagination
+  if (vp && document.querySelector(vp.list_selector) && document.querySelector(vp.native_pagination_selector)) {
+    return true
+  }
+  return false
+}
+
 function scheduleMismatchCheck(): void {
   if (!adapter || mismatchChecked) return
   mismatchChecked = true
@@ -575,7 +652,11 @@ function scheduleMismatchCheck(): void {
     // 检查所有 post_selectors 是否全部零匹配
     const anyMatch = adapter.post_selectors.some((sel) => document.querySelector(sel) !== null)
     if (!anyMatch) {
-      // 5s 零匹配 → 适配包可能失效：不过滤 + 提示条（v0.1 非模态）
+      // 详情/评论页零帖子匹配属正常（评论独立过滤），不视为适配失效
+      if (hasCommentMatch()) return
+      // 个人主页/搜索/正文等非信息流页面不承载列表，不得弹失效模态
+      if (!isFeedPage()) return
+      // 5s 零匹配 → 适配包可能失效：不过滤 + 强制模态
       showMismatchBanner(adapter.name)
     }
   }, 5000)
@@ -611,6 +692,55 @@ function showMismatchBanner(platformName: string): void {
 
 // ---------- 消息监听 ----------
 
+/**
+ * 站点授权被撤销：停止一切过滤行为、恢复 DOM、断开观察器（幂等，可重复接收）。
+ * 由 background 在 permissions.onRemoved 时广播。
+ */
+function stopFiltering(): void {
+  enabled = false
+  adapter = null
+  settings = null
+  observer?.disconnect()
+  observer = null
+  document.removeEventListener('click', handleVirtualContextClick, true)
+  document.removeEventListener('click', handleFeedContextClick, true)
+  if (virtualRestartTimer) {
+    clearTimeout(virtualRestartTimer)
+    virtualRestartTimer = null
+  }
+  if (feedRestartTimer) {
+    clearTimeout(feedRestartTimer)
+    feedRestartTimer = null
+  }
+  if (bannerTimer) {
+    clearTimeout(bannerTimer)
+    bannerTimer = null
+  }
+  virtualPagination?.destroy()
+  virtualPagination = null
+  // 恢复所有被过滤元素与占位条
+  document
+    .querySelectorAll(`[${FILTERED_ATTR}="1"]`)
+    .forEach((el) => {
+      const htmlEl = el as HTMLElement
+      restoreOriginalDisplay(htmlEl)
+      delete htmlEl.dataset[FILTERED_FLAG]
+    })
+  document.querySelectorAll('.tm-collapsed').forEach((ph) => ph.remove())
+  removeBannerUi()
+  filteredCount = 0
+  unparseableCount = 0
+  diagnostics = []
+  processed = new WeakSet()
+  completeness = 'complete'
+  scanProgress = undefined
+  virtualContextValue = ''
+  feedContextValue = ''
+  chrome.runtime
+    .sendMessage({ type: 'FILTER_STATE_CHANGED', enabled: false })
+    .catch(() => {})
+}
+
 chrome.runtime.onMessage.addListener((msg: RuntimeMessage, _sender, sendResponse) => {
   switch (msg.type) {
     case 'TIME_SETTINGS_UPDATED':
@@ -620,7 +750,13 @@ chrome.runtime.onMessage.addListener((msg: RuntimeMessage, _sender, sendResponse
       // P2-5：远程适配包已更新 → 重新加载并重扫
       void reloadAdapter()
       break
+    case 'PERMISSION_REVOKED':
+      // 授权撤销：清理并停止（页面刷新前不再过滤）
+      stopFiltering()
+      break
     case 'TOGGLE_FILTER':
+      // 无适配包或未设定时间（含 active_paths 白名单外页面）时不响应，避免图标状态与实况脱节
+      if (!adapter || !settings) break
       enabled = !enabled
       reapplyAll()
       chrome.runtime

@@ -53,7 +53,7 @@ const listeners: Array<(message: unknown, sender: unknown, respond: (value: unkn
 }
 
 await import('../../src/content/index.ts')
-await new Promise((resolve) => setTimeout(resolve, 100))
+await new Promise((resolve) => setTimeout(resolve, 450)) // 覆盖 updateBanner 250ms 节流
 
 const hidden = (id: string): boolean => (document.getElementById(id) as HTMLElement).style.display === 'none'
 assert.equal(hidden('before'), true)

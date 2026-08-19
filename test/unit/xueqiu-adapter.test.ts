@@ -64,4 +64,32 @@ const liveText = extractTimestampText(
 assert.equal(liveText, '今天 20:40')
 assert.ok(parseTimestamp(liveText!, adapter, Date.now()), '7x24 分组日期与行内时间应组合解析')
 
+// ---- H3 回归：strip_pattern 必须校验正则合法性（非法正则会中断运行时）----
+const badStrip: Adapter = {
+  version: '9.9.9',
+  platforms: [
+    {
+      name: '测试',
+      domains: ['evil.example.com'],
+      post_selectors: ['article'],
+      timestamp: { selector: 'time', type: 'absolute', format: 'YYYY-MM-DD HH:mm', strip_pattern: '(unclosed' },
+      quick_presets: [{ label: 'x', value: 'y' }],
+    },
+  ],
+}
+assert.ok(validateAdapter(badStrip)?.some((e) => e.includes('strip_pattern')), '非法 strip_pattern 应被 schema 拒绝')
+const goodStrip: Adapter = {
+  version: '9.9.9',
+  platforms: [
+    {
+      name: '测试',
+      domains: ['ok.example.com'],
+      post_selectors: ['article'],
+      timestamp: { selector: 'time', type: 'absolute', format: 'YYYY-MM-DD HH:mm', strip_pattern: '^\\s*修改于\\s*' },
+      quick_presets: [{ label: 'x', value: 'y' }],
+    },
+  ],
+}
+assert.equal(validateAdapter(goodStrip), null, '合法 strip_pattern 应通过校验')
+
 console.log('雪球适配包时间与虚拟分页配置测试通过')

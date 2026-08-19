@@ -10,7 +10,7 @@
 import type { TimeSettings } from '../shared/types'
 import { AdapterManager, compareVersions } from '../adapters'
 import { validateAdapter } from '../adapters/schema'
-import { getPrefs, getRemoteAdapter, setRemoteAdapter } from '../shared/storage'
+import { extractDomain, getPrefs, getRemoteAdapter, setRemoteAdapter } from '../shared/storage'
 import type { Adapter } from '../shared/types'
 
 const TIME_SETTINGS_PREFIX = 'timeSettings.'
@@ -98,9 +98,9 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     void updateAdapters()
   }
-  // P1-7：首次安装自动打开引导页（重新安装也触发，便于重复验证）
-  if (details.reason === 'install' || details.reason === 'update') {
-    console.log('[时光机] onInstalled 触发，准备打开引导页，reason=', details.reason)
+  // P1-7：仅首次安装自动打开引导页（更新时弹窗会打扰现有用户）
+  if (details.reason === 'install') {
+    console.log('[时光机] 首次安装，打开引导页')
     chrome.tabs
       .create({ url: chrome.runtime.getURL('welcome.html') })
       .then(() => console.log('[时光机] 引导页已打开'))
@@ -256,6 +256,35 @@ chrome.runtime.onMessage.addListener((msg, sender, _sendResponse) => {
 // eligible for content-script injection after its next page load.
 chrome.permissions?.onAdded?.addListener(() => {
   void ensureContentScriptRegistered()
+})
+
+// 授权被撤销：收敛注册（去掉已撤销 origin）并向受影响标签页广播停用。
+// 已注入的 content script 不会因撤销而自动卸载，必须显式通知其恢复 DOM 并停止过滤。
+chrome.permissions?.onRemoved?.addListener((removed) => {
+  void ensureContentScriptRegistered()
+  const domains = new Set<string>()
+  for (const origin of removed?.origins ?? []) {
+    try {
+      domains.add(extractDomain(new URL(origin.replace('*://', 'https://')).hostname))
+    } catch {
+      /* 忽略非法 origin */
+    }
+  }
+  if (domains.size === 0) return
+  void (async () => {
+    const tabs = await chrome.tabs.query({})
+    for (const tab of tabs) {
+      if (!tab.id || !tab.url) continue
+      let host: string
+      try {
+        host = new URL(tab.url).hostname
+      } catch {
+        continue
+      }
+      if (![...domains].some((d) => host === d || host.endsWith('.' + d))) continue
+      chrome.tabs.sendMessage(tab.id, { type: 'PERMISSION_REVOKED' }).catch(() => {})
+    }
+  })()
 })
 
 console.log('[时光机] Service Worker 已启动')

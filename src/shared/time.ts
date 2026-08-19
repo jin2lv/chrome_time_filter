@@ -42,10 +42,22 @@ export function extractTimePart(raw: string): string {
   return raw.split('·')[0].trim()
 }
 
-/**
- * 相对时间解析（时间锚定）
+/** patterns 编译缓存：同一适配包正则复用实例，避免逐帖重复编译 */
+const relativePatternCache = new Map<string, RegExp>()
+
+/** 获取（或编译并缓存）相对时间正则 */
+function getRelativePattern(regex: string): RegExp {
+  let re = relativePatternCache.get(regex)
+  if (!re) {
+    re = new RegExp(regex)
+    relativePatternCache.set(regex, re)
+  }
+  return re
+}
+
+/** 相对时间解析（时间锚定）
  * @param text 原始时间文本（可含 "· 来自xxx" 后缀）
- * @param adapter 适配包（取 timestamp.patterns）
+ * @param patterns 适配包相对时间规则
  * @param anchor 锚点时刻（MutationObserver 首次检测到帖子的时刻）
  */
 export function parseRelativeTime(
@@ -55,7 +67,7 @@ export function parseRelativeTime(
 ): number | null {
   const part = extractTimePart(text)
   for (const pat of patterns) {
-    const re = new RegExp(pat.regex)
+    const re = getRelativePattern(pat.regex)
     const m = part.match(re)
     if (!m) continue
     const n = m[1] !== undefined ? parseInt(m[1], 10) : 1
@@ -123,6 +135,28 @@ export function parseAbsoluteTime(
 /** extract_pattern 编译缓存：避免每个帖子重复编译（同一正则复用实例） */
 const extractPatternCache = new Map<string, RegExp>()
 
+/** strip_pattern 编译缓存：同一正则复用实例 */
+const stripPatternCache = new Map<string, RegExp>()
+
+/**
+ * 应用 strip_pattern 前缀剥离；正则非法时静默跳过（不中断调用链）。
+ * @returns 剥离后的文本（剥离失败时返回原文）
+ */
+function applyStripPattern(raw: string, stripPattern: string | null | undefined): string {
+  if (!stripPattern) return raw
+  let re = stripPatternCache.get(stripPattern)
+  if (!re) {
+    try {
+      re = new RegExp(stripPattern)
+    } catch {
+      console.warn('[时光机] strip_pattern 不是合法正则，已跳过:', stripPattern)
+      return raw
+    }
+    stripPatternCache.set(stripPattern, re)
+  }
+  return raw.replace(re, '').trim()
+}
+
 /**
  * 统一入口：先相对后绝对
  * 若适配包声明 extract_pattern，先对原始文本正则提取时间子串
@@ -177,7 +211,7 @@ export function extractTimestampText(
       const time = attr ? node.getAttribute(attr) : (node.textContent ?? '').trim()
       if (time) {
         const raw = `${date} ${time}`.trim()
-        return stripPattern ? raw.replace(new RegExp(stripPattern), '').trim() : raw
+        return applyStripPattern(raw, stripPattern)
       }
     }
   }
@@ -189,7 +223,7 @@ export function extractTimestampText(
     const timeText = attr ? node.getAttribute(attr) : node.textContent?.trim()
     if (dateText && timeText) {
       const raw = `${dateText} ${timeText}`
-      return stripPattern ? raw.replace(new RegExp(stripPattern), '').trim() : raw
+      return applyStripPattern(raw, stripPattern)
     }
   }
 
@@ -201,7 +235,7 @@ export function extractTimestampText(
     raw = (node.textContent ?? '').trim()
   }
   if (!raw) return null
-  return stripPattern ? raw.replace(new RegExp(stripPattern), '').trim() : raw
+  return applyStripPattern(raw, stripPattern)
 }
 
 export default dayjs

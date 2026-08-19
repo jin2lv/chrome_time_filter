@@ -100,6 +100,11 @@ async function init(): Promise<void> {
   const prefs = await getPrefs()
   syncStrategy(prefs.defaultStrategy)
 
+  // 非目标站点（无适配包）：时间设置无意义，禁用全部时间控件
+  if (!isTarget) {
+    setTimeControlsDisabled(true)
+  }
+
   // 授权检测：目标平台但未授权 → 引导授权
   const authorized = await isAuthorized()
   if (isTarget && !authorized) {
@@ -223,16 +228,21 @@ async function ensureContentScriptActive(): Promise<void> {
   await chrome.scripting.executeScript({ target: { tabId }, files: js })
 }
 
-/** 向当前 Tab 的 Content Script 查询状态（未注入时 catch 降级） */
-async function refreshContentState(): Promise<void> {
-  if (tabId === undefined) return
+/** 向当前 Tab 的 Content Script 查询状态（未注入时 catch 降级）
+ * @returns 是否成功查询到 content script（false 表示尚未注入）
+ */
+async function refreshContentState(): Promise<boolean> {
+  if (tabId === undefined) return false
   try {
     const res = await chrome.tabs.sendMessage(tabId, { type: 'QUERY_STATE' })
     if (res) state = res as ContentState
+    render()
+    return true
   } catch {
     // content script 未注入（授权刚生效需刷新页面）
+    render()
+    return false
   }
-  render()
 }
 
 function bindEvents(): void {
@@ -344,7 +354,12 @@ async function saveTimeSettings(): Promise<void> {
     next = { mode, cutoff, strategy: currentStrategy() }
   }
   await setTimeSettings(domain, next)
-  await refreshContentState()
+  const queried = await refreshContentState()
+  if (!queried) {
+    // 设置已写入 storage，但当前页面还没有 content script（如授权后未刷新），给出明确指引
+    scopeStatus.hidden = false
+    scopeStatus.textContent = '设置已保存。当前页面尚未加载过滤脚本——若刷新页面后仍不生效，请重新授权。'
+  }
 }
 
 function currentMode(): TimeSettings['mode'] {
