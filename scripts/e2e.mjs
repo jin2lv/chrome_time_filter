@@ -28,7 +28,8 @@ const MOCK_HTML = readFileSync(resolve(root, 'test', 'fixtures', 'xueqiu-mock.ht
 const CUTOFF_MS_AGO = 2 * 60 * 60 * 1000 // 截止 = 2 小时前
 
 const context = await chromium.launchPersistentContext(PROFILE, {
-  channel: 'chrome',
+  // 注意：不用 channel:'chrome'（Chrome 151 stable 已移除 --load-extension 支持，
+  // 扩展加载会静默失败）。用 playwright 自带 Chromium 143（仍支持加载扩展）。
   headless: false,
   args: [
     `--disable-extensions-except=${EXT_DIR}`,
