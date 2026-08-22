@@ -67,9 +67,10 @@ console.log('✓ 今天/昨天 HH:mm（雪球评论格式，P2-4）')
 const yesterdayCommentAnchor = new Date('2026-08-19T13:00:00+08:00').getTime()
 const y = parseTimestamp('昨天 16:23 · 江苏', adapter, yesterdayCommentAnchor)
 assert.ok(y !== null && !y.isRelative, '「昨天 HH:mm」应走绝对解析（isRelative=false）')
+// parseRelativeDayTime 以系统当前日期为基准，复用前面已验证的 yestExpected
 assert.strictEqual(
   y!.timestamp,
-  new Date('2026-08-18T16:23:00+08:00').getTime(),
+  yestExpected,
   `「昨天 16:23」应解析为昨天 16:23，实际 ${new Date(y!.timestamp).toLocaleString('zh-CN')}`,
 )
 // 纯「昨天」（列表帖子）仍走相对锚定
