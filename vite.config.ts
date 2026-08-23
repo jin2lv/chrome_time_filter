@@ -35,7 +35,10 @@ const manifest = defineManifest({
   options_page: 'src/options/index.html',
 
   background: {
-    service_worker: 'src/background/index.ts',
+    // Keep a distinct basename from content/index.ts: CRXJS uses entry
+    // basenames when generating loader imports, and duplicate index.ts
+    // entries can point the service worker loader at the content chunk.
+    service_worker: 'src/background/service-worker.ts',
     type: 'module',
   },
 
@@ -43,7 +46,7 @@ const manifest = defineManifest({
   // 校验拒绝 []），故填 `*://localhost/*`——正常浏览几乎不会匹配，
   // 即使触发 content script 找不到适配包也直接退出，无副作用。
   // 实际各平台注入走 background 动态注册（chrome.scripting.registerContentScripts，
-  // 配合 optional_host_permissions 按需授权，见 src/background/index.ts）。
+  // 配合 optional_host_permissions 按需授权，见 src/background/service-worker.ts）。
   content_scripts: [
     {
       matches: ['*://localhost/*'],
@@ -107,7 +110,7 @@ export default defineConfig({
       output: {
         // content script 产物路径由 background 动态读取
         // chrome.runtime.getManifest().content_scripts[0].js[0] 引用（对 hash 免疫），
-        // 见 src/background/index.ts
+        // 见 src/background/service-worker.ts
       },
     },
   },

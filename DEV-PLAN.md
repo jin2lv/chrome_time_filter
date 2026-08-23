@@ -208,7 +208,7 @@
 1. `popup/main.ts` `saveCutoff` 未校验 `NaN` → 增加 `Number.isNaN(ts)` 拦截
 2. `popup/main.ts` 未读取全局 `defaultStrategy` → `init` 中增加 `getPrefs()` 同步
 3. `content/index.ts` `cutoff=0` 边界处理 → 统一改为 `settings?.cutoff == null`
-4. `background/index.ts` 未使用 `badgeCount` 设置 → 增加判断
+4. `background/service-worker.ts` 未使用 `badgeCount` 设置 → 增加判断
 5. `content/index.ts` `scheduleMismatchCheck` 只检查 `post_selectors[0]` → 改为 `.every` 全零匹配
 6. `content/index.ts` 相对时间锚定未持久化 → 写入 `dataset.tmAnchor` 复用原锚点
 

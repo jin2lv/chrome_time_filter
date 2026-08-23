@@ -120,7 +120,7 @@ const remotePkg = {
   ],
 }
 
-const { updateAdapters } = await import('../../src/background/index')
+const { updateAdapters } = await import('../../src/background/service-worker')
 const { AdapterManager } = await import('../../src/adapters')
 const { getRemoteAdapter } = await import('../../src/shared/storage')
 

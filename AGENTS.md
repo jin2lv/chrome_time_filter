@@ -23,10 +23,10 @@ git diff --check
 
 ## 架构关键（易踩坑）
 
-- **按需授权模型**：manifest 的 `content_scripts` 只有 `*://localhost/*` 占位（Chrome 不允许空数组）。真实注入由 background 用 `chrome.scripting.registerContentScripts` 动态注册（id `tm-main`）。`src/background/index.ts:25` 的 `TARGET_MATCHES` 必须与 `optional_host_permissions` 严格同步，添加新平台要同时改两处。
+- **按需授权模型**：manifest 的 `content_scripts` 只有 `*://localhost/*` 占位（Chrome 不允许空数组）。真实注入由 background 用 `chrome.scripting.registerContentScripts` 动态注册（id `tm-main`）。`src/background/service-worker.ts:25` 的 `TARGET_MATCHES` 必须与 `optional_host_permissions` 严格同步，添加新平台要同时改两处。
 - **适配包 = 数据驱动 JSON**（`src/adapters/xueqiu.json` v0.3.0 / `ths.json` v0.1.0）：新增平台时写 JSON 并通过 `validateAdapter`（手写校验，`src/adapters/schema.ts`），改字段需同步 schema、`src/shared/types.ts` 的 `PlatformAdapter` 类型、content script 消费处及对应测试。
 - storage keys：`timeSettings.<domain>`、`prefs`、`adapters.remote`（见 `src/shared/storage.ts`）。
-- 消息协议（`RuntimeMessage`）：background ↔ content script 广播 `TIME_SETTINGS_UPDATED` / `TOGGLE_FILTER` / `ADAPTERS_UPDATED` / `FILTER_COUNT_UPDATED` / `FILTER_STATE_CHANGED` / `PERMISSION_REVOKED`（授权撤销，content 收到后 `stopFiltering()` 恢复 DOM 并停止，对应 background `permissions.onRemoved`，见 `src/background/index.ts`）；加新消息要同步 `src/shared/types.ts`。
+- 消息协议（`RuntimeMessage`）：background ↔ content script 广播 `TIME_SETTINGS_UPDATED` / `TOGGLE_FILTER` / `ADAPTERS_UPDATED` / `FILTER_COUNT_UPDATED` / `FILTER_STATE_CHANGED` / `PERMISSION_REVOKED`（授权撤销，content 收到后 `stopFiltering()` 恢复 DOM 并停止，对应 background `permissions.onRemoved`，见 `src/background/service-worker.ts`）；加新消息要同步 `src/shared/types.ts`。
 - content script（`src/content/index.ts`）是核心，含雪球虚拟分页引擎 `src/content/virtual-pagination.ts`（稳定 ID 去重、缓存、200 原生页上限），修改前先读该文件头部注释。
 - 过滤标记：`data-tm-filtered` 属性（dataset 键 `tmFiltered`，含连字符会抛 SyntaxError）；hide 策略 = `style.display:none`。
 - 开发用固定扩展 id 来自 vite 配置中的 `key`，对应私钥 `scripts/keys/timemachine-dev.pem`（本地文件，**已在 .gitignore，禁止提交**）。
