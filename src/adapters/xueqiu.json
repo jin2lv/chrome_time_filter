@@ -64,7 +64,9 @@
         },
         "page_size": 10,
         "max_source_pages": 200,
-        "wait_ms": 300
+        "wait_ms": 800,
+        "next_delay_min_ms": 400,
+        "next_delay_max_ms": 800
       },
       "notes": "DOM 取证于 2026-08-14：首页一级类别由 .home-timeline-tabs a.active 标识，关注（全部/关注精选/只看原发/未分组）和自选（全部/公告/新闻）二级类别由 .timeline__tab__tags a.active 标识；普通首页流使用 article.timeline__item、a.date-and-source[data-id]，7x24 使用 .timeline__live tr，并将分组标题 .home__timeline-live__hd 与行内首列时间组合解析。首页均为智能流或按需加载流，明确标记为仅过滤已加载内容。个股页全部/讨论/投资者关系/交易/资讯/公告六类共用 .stock-timeline > .status-list、article.timeline__item、a.date-and-source[data-id] 与原生分页；类别由 .stock-timeline-tabs a.active 标识，切换类别时重建独立虚拟分页会话。编辑帖格式为 '修改于MM-DD HH:mm'。虚拟分页跨原生页按需聚合，每虚拟页 10 条，单次会话最多扫描 200 个原生页。详情页评论 .comment__item，时间戳 span.time。"
     }

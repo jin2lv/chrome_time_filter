@@ -317,12 +317,21 @@ export class VirtualPaginationController {
     this.renderPage()
   }
 
+  private nextPageDelay(): number {
+    const min = this.config.next_delay_min_ms ?? 0
+    const max = this.config.next_delay_max_ms ?? min
+    if (max <= 0) return 0
+    return min + Math.floor(Math.random() * (max - min + 1))
+  }
+
   private async loadNextSourcePage(currentRun: number): Promise<boolean> {
     const next = document.querySelector<HTMLElement>(this.config.next_selector)
     if (!next || next.getAttribute('aria-disabled') === 'true' || next.classList.contains('disabled')) {
       this.state = 'exhausted'
       return false
     }
+    await new Promise((resolve) => setTimeout(resolve, this.nextPageDelay()))
+    if (this.destroyed || currentRun !== this.runId) return false
     const previous = this.sourcePageValue()
     const previousSignature = this.sourcePageSignature()
     next.click()

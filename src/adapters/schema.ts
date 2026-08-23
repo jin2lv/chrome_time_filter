@@ -257,6 +257,19 @@ function validatePlatform(pl: PlatformAdapter): string[] {
       if (!Number.isFinite(virtual.wait_ms) || virtual.wait_ms < 0) {
         errs.push('virtual_pagination.wait_ms 必须是非负数')
       }
+      for (const key of ['next_delay_min_ms', 'next_delay_max_ms'] as const) {
+        const value = virtual[key]
+        if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
+          errs.push(`virtual_pagination.${key} 必须是非负数`)
+        }
+      }
+      if (
+        virtual.next_delay_min_ms !== undefined &&
+        virtual.next_delay_max_ms !== undefined &&
+        virtual.next_delay_min_ms > virtual.next_delay_max_ms
+      ) {
+        errs.push('virtual_pagination.next_delay_min_ms 不能大于 next_delay_max_ms')
+      }
     }
   }
   return errs

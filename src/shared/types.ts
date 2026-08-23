@@ -119,6 +119,10 @@ export interface PlatformAdapter {
     page_size: number
     max_source_pages: number
     wait_ms: number
+    /** 翻页前额外随机等待的下界毫秒数；省略时为 0 */
+    next_delay_min_ms?: number
+    /** 翻页前额外随机等待的上界毫秒数；省略时为 0 */
+    next_delay_max_ms?: number
   }
 }
 
