@@ -1,5 +1,28 @@
 # TimeMachine 时光机 — 开发计划与验证清单
 
+## 2026-08-22/23 开发/测试交接记录（注入不稳定根治批次）
+
+> 本节记录 2026-08-22/23 两个提交的落地状态：扩展重载后动态内容脚本注入不稳定的根因定位与根治、虚拟分页翻页节流。均为 bug 修复，未改变平台适配语义与既有架构。
+
+### 本批完成项
+
+- **扩展重载注入不稳定根治**（`30e5ecf`，2026-08-23）：根因是 `content/index.ts` 与 `background/index.ts` 同 basename，CRXJS 从 entry basename 生成 loader import，可能使构建成功但 service worker loader 指向 content chunk（SW 加载失败 → 动态注册从不执行 → 重载扩展后已打开标签不注入）。修复：background 入口重命名为 `src/background/service-worker.ts`；新增 `scripts/check-build-loader.mjs` 挂入 `build` 与 `test:build`，每次构建校验 loader 静态 import 指向 background chunk（含 `'Service Worker'` 标记）防回归。SW 注册通路本就含 `onInstalled` + `onStartup` + SW 顶层唤醒三重幂等触发（`service-worker.ts` 末段），根因修复后注入通路完整。
+- **注入问题调查工具沉淀**（`0f90e6c`，2026-08-22）：新增 `scripts/probe-*.mjs`（12 个，probe-cdp/ext/register/sw 系列）与 `docs/CHROME-DEVTOOLS-MCP.md`，用于捕获 SW warning 级注册失败日志、安装/重载/触发扩展动作；`make-test-build.mjs` 加固。probe 脚本硬编码 Windows playwright-core 路径，仅 Windows 本机可用。
+- **虚拟分页翻页节流防风控**（`553fd11`，2026-08-23）：`virtual_pagination.wait_ms` 300→800，新增可选 `next_delay_min_ms`/`next_delay_max_ms` 适配包字段（schema 校验非负且 min≤max），引擎点击下一原生页前等待随机间隔（雪球 400-800ms），降低触发「访问验证」滑块的概率。
+- **时间测试日期无关化**（`8fa2edd`，2026-08-22）：`time.test.ts`「昨天 16:23」断言复用 `yestExpected`，不再锚定硬编码日期。
+- **文档**（`c642b83`）：新增 `VERIFY-CHECKLIST.md` 手动验收清单与新手版指南；AGENTS.md 已知问题段已同步「注入已根治」；VERIFY-CHECKLIST §1.4 改为根治后真机复验项。
+
+### 验证记录（本批）
+
+- **2026-09-01 基线复跑（Linux/WSL，工作区含本节文档改动）**：`npm test` 12 个文件全部通过（含 adapters-update 18 项）；`npx tsc --noEmit` 0 错误；`rm -rf dist && npm run build` 成功且退出码 0（`check:build-loader` 随构建自动通过：`service-worker-loader.js -> ./assets/service-worker.ts-*.js`）；`git diff --check` 通过。node_modules 已含 `@esbuild/linux-x64`（此前 --no-save 补装仍在）。
+- **注入根治的真机复验仍欠**：VERIFY-CHECKLIST §1.4（重载扩展 → 新开雪球标签不打开 Popup 直接注入生效）待最新构建重跑；08-17 及更早的真机记录均在修复之前，不能作为通过依据。
+
+### 未完成或不能下结论
+
+- 同 2026-08-19 批次「未完成或不能下结论」各条不变：P2-16 雪球终验（六类别/去重/缓存待最新构建复验）、集思录/东财资讯真机验收、全新 Profile 端到端、性能实测等仍欠。
+
+---
+
 ## 2026-08-19 开发/测试交接记录（深度 Review 修复批次：H1-H5 / M1-M6）
 
 > 本节记录 2026-08-19 全量代码深度 review 后的修复批次：5 项确认 bug（H1-H5）与 6 项中优先级问题（M1-M6）。全部为 bug 修复与性能收拢，未改变平台适配语义与既有架构；新增 1 个运行时消息（`PERMISSION_REVOKED`）。评审问题清单原文见会话记录（H1-H5、M1-M6 编号一一对应）。

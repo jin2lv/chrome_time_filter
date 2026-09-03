@@ -31,10 +31,11 @@
 步骤：完成引导 → chrome.storage.local 检查。
 - [ ] `prefs.defaultStrategy` 与 `prefs.onboarded` 已写入
 
-### 1.4 扩展重载后的注入稳定性（已知问题）
-步骤：重载扩展 → 新开雪球标签 → 打开 Popup。
-- [ ] 能记录现象；若未注入，打开 Popup 触发注册同步后刷新可恢复（已知缓解路径）
-- [ ] `chrome://extensions` service worker 控制台无未捕获异常
+### 1.4 扩展重载后的注入稳定性（根治后复验，30e5ecf）
+背景：根因（CRXJS loader basename 冲突）已于 2026-08-23 修复，`check:build-loader` 已在构建期防回归；本节为真机复验，通过后即可关闭该已知问题。
+步骤：重载扩展 → 新开雪球标签（先不打开 Popup）。
+- [ ] 内容脚本自动注入并生效（无需打开 Popup + 手动刷新）
+- [ ] `chrome://extensions` service worker 控制台无未捕获异常，loader 指向 background chunk
 
 ---
 
