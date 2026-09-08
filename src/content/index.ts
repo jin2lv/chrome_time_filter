@@ -854,6 +854,14 @@ async function init(): Promise<void> {
   scanExisting()
   startObserver()
   scheduleMismatchCheck()
+  // 后台标签可能因 Chrome 节流/内存回收丢失变异处理（真机案例：区间模式下隔夜空闲后
+  // 新帖未被过滤，重新保存设置才恢复）。回到前台时对未处理节点增量补扫：
+  // processPost 以 processed WeakSet 去重；虚拟会话活跃时 startVirtualPagination 直接返回，不影响其收集。
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return
+    if (!adapter || !settings || !enabled) return
+    scanExisting()
+  })
   console.log(
     `[时光机] 已激活: ${adapter.name} | 模式=${settings?.mode ?? '未设定'} | 边界=${settings?.mode === 'window' ? `${settings.window?.start ?? '-'}..${settings.window?.end ?? '-'}` : settings?.cutoff ?? '-'} | 策略=${settings?.strategy ?? 'hide'} | 评论回退=${commentNoTime}`,
   )
