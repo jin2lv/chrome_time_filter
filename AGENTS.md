@@ -33,6 +33,8 @@ git diff --check
 
 ## 已知问题 / 操作约束
 
-- **扩展重载注入不稳定已根治**（2026-08-23，`30e5ecf`）：根因是 `content/index.ts` 与 `background/index.ts` 同 basename 导致 CRXJS 生成的 service worker loader 可能指向 content chunk（构建成功但 SW 加载失败 → 动态注册从不执行）。已将 background 入口重命名为 `service-worker.ts`，并新增 `scripts/check-build-loader.mjs` 挂入 `build`/`test:build` 校验 loader 指向 background chunk 防回归；SW 注册通路含 `onInstalled` + `onStartup` + 顶层唤醒三重幂等触发。真机复验见 VERIFY-CHECKLIST §1.4。
-- 雪球有反爬风控：真机验证时连续自动翻页/快速点击会触发"访问验证"滑块，污染测试结果；每次切换等待原生列表稳定、降低操作频率（见 DEV-PLAN 交接记录）。
+- **扩展重载注入不稳定已根治并真机闭环**（2026-08-23 `30e5ecf` 根治；2026-09-06 真机复验通过，VERIFY-CHECKLIST §1.4）：根因是 `content/index.ts` 与 `background/index.ts` 同 basename 导致 CRXJS 生成的 service worker loader 可能指向 content chunk（构建成功但 SW 加载失败 → 动态注册从不执行）。已将 background 入口重命名为 `service-worker.ts`，并新增 `scripts/check-build-loader.mjs` 挂入 `build`/`test:build` 校验 loader 指向 background chunk 防回归；SW 注册通路含 `onInstalled` + `onStartup` + 顶层唤醒三重幂等触发。实测注意：重载后新标签页的注入生效有数十秒引擎稳定等待期，属设计内延迟。
+- **快捷键冲突已修复并实机验证（2026-09-08）**：`commands.toggle-filter` suggested_key 由 `Ctrl+Shift+T`（与 Chrome 内置「重新打开已关闭标签页」冲突）更换为 `Alt+Shift+T`（vite.config.ts），用户已在 shortcuts 页手动绑定并实机验证通过。注意两条运维知识：suggested_key 变更后重载/更新扩展**不会自动应用绑定**（需 shortcuts 页手动绑定一次）；快捷键捕获框不接收合成/自动化按键（绑定与验证只能人工按键）。
+- 雪球有反爬风控：真机验证时连续自动翻页/快速点击会触发"访问验证"滑块，污染测试结果；每次切换等待原生列表稳定、降低操作频率（见 DEV-PLAN 交接记录）。553fd11 翻页节流（400-800ms 随机间隔 + wait 800ms）经 2026-09-06/07 真机低频会话实战验证有效（十类切换 + 多页翻页零风控）；但**区间深回溯**（如昨日区间在次日访问需跨过全部今日帖）会连续扫描数十原生页，累积仍会触发风控（09-07 实测 59 页后触发），测试时须预留人工过滑块。
+- **同 Profile 并存多份本扩展构建会互相污染**：dev（dist/）重建后若内容 hash 未变，其历史动态注册仍有效并继续向新雪球标签注入过滤；真机测试前须在 chrome://extensions 停用非受测实例，测毕恢复。另 dist-test 的 manifest 预授予平台 `host_permissions`，Chrome 会忽略 optional 声明并拒绝 `permissions.remove`（撤销授权链路仅能在商店包构建上真机验证，见 VERIFY-CHECKLIST §2.4）。
 - 相对时间解析采用"时间锚定"：以 MutationObserver 首次检测到帖子的时刻为锚点反推（`src/shared/time.ts`），含义与"页面加载时间"不同，改动前先看懂该策略。

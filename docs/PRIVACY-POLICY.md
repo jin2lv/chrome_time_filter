@@ -29,7 +29,7 @@
 | `activeTab` | 仅在你主动打开扩展面板时识别当前标签页，以显示站点状态并启动已授权站点的过滤脚本 | 否 |
 | `scripting` | 动态向已授权网站注入内容脚本以执行过滤 | 否 |
 | `alarms` | 每 12 小时触发一次适配包更新检查 | 否 |
-| `optional_host_permissions`（雪球、同花顺） | 仅在你首次访问对应网站并主动授权后，才对该网站执行过滤 | 否 |
+| `optional_host_permissions`（雪球 xueqiu.com、同花顺 t.10jqka.com.cn、东方财富资讯 finance.eastmoney.com、集思录 jisilu.cn / www.jisilu.cn） | 仅在你首次访问对应网站并主动授权后，才对该网站执行过滤 | 否 |
 
 我们采用**按需授权**模型：安装扩展时不申请任何网站权限；只有你访问某平台并点击「授权」后，扩展才会对该平台生效。你可以随时在设置页撤销授权。
 
