@@ -1,5 +1,36 @@
 # TimeMachine 时光机 — 开发计划与验证清单
 
+## 2026-09-08 开发批次四（P2-17 切片 1：信息流连续补拉 + 统一状态单位）
+
+> 启动 P2-17（闸门剩余两项——首页区间版 6 类抽查、§13/§2.4 商店包复验——不阻塞开发，安排在切片 1 的真机回归会话与独立会话中收尾）。本批为纯开发批次：新增信息流连续补拉引擎（P2-15 遗留项「为可可靠回溯的雪球首页类别接入连续补拉」的正身）、统一扫描状态单位契约、适配包 schema 扩展与回归测试。
+
+### 设计决策（切片 1）
+
+- **手动触发，不自动滚动**：信息流尾部固定条「⏳ 查找更早的帖子」按钮，用户点击后才启动滚动补拉（与虚拟分页「点击下一页才继续扫描、不预取超过所需页」哲学一致）。热度/智能流（热门等非严格时间序）不提供入口，保持「仅过滤已加载内容」诚实标注——「不适合深度回溯的信息流不会勉强适配」。
+- **数据驱动白名单**：适配包 `feed_context.backfill`（contexts/scroll_delay_ms/max_screens/target_hits/end_stall_count），仅严格时间序类别声明；雪球 v0.4.0 配置 `["7x24", "关注 / 全部"]`、节流 1200ms/屏、上限 10 屏、目标 10 条、连续 2 次无新增判末页。运行时不强制 delay 下限（测试需小值），风控安全由适配包数据审核负责。
+- **引擎独立成模块**（`src/content/feed-backfill.ts`）：不改动已真机验证的 `virtual-pagination.ts`（原生页码策略收编为切片 2）。补拉只负责「拉」（滚动节流/新增检测/命中统计/停止条件/状态上报），过滤判定与隐藏仍由既有 observer → processPost 链唯一负责（decide 仅作命中统计，不计数，避免 filtered/unparseable 双计）。
+- **统一状态契约**：`ScanProgress` 新增可选 `unit: 'pages' | 'screens'`；Popup `scanStatusText` 与悬浮条按单位渲染「原生页/屏」。补拉状态映射 completeness：loading→scanning、exhausted→exhausted、limit/cancelled/idle→loaded-only。
+- **UI 不依赖站点 DOM 结构**：fixed 底部居中操作条（状态文本 + 主按钮），按钮按状态切换「查找更早的帖子/取消/继续查找」，exhausted 后禁用。
+
+### 落地清单
+
+- `src/shared/types.ts`：`FeedBackfillConfig` + `feed_context.backfill` + `ScanProgress.unit`
+- `src/adapters/schema.ts`：backfill 校验（contexts 非空字符串数组、delay 非负、max_screens/target_hits/end_stall_count 正整数）
+- `src/content/feed-backfill.ts`：FeedBackfillController（滚动循环、命中统计、idle/exhausted/limit/cancelled 状态机、screens 累计跨会话）
+- `src/content/index.ts`：mountFeedBackfill()（reapplyAll/init 挂载、stopFiltering/reapplyAll 销毁；与虚拟分页互斥）
+- `src/popup/main.ts`：scanStatusText 按 unit 渲染
+- `src/adapters/xueqiu.json`：v0.4.0，feed_context.backfill 配置 + notes 更新
+- `test/unit/feed-backfill.test.ts`（新，已挂入 package.json test，14 文件）：挂载白名单/目标达成/末页判定/屏数上限/取消恢复/schema 校验 6 组
+- `test/unit/adapters-update.test.ts`：远程包版本断言由硬编码 0.3.0/0.4.0 改为动态推导内置版本 +1 minor（内置包升版本不再造成测试回归）
+
+### 验证与遗留
+
+- 基线全绿：`npm test` 14 文件、`npx tsc --noEmit`、`rm -rf dist && npm run build`（loader 校验通过）、`npm run test:build`、`git diff --check`。
+- **真机回归欠**（切片 1 验收）：雪球首页 7x24/关注流点击补拉按钮的实机行为（滚动加载、状态条、与风控节流的实际表现）+ 截止/区间两模式；排入下一会话的雪球真机回归批次。
+- P2-17 其余（load-more 按钮式获取、原生页码策略收编统一引擎、扫描状态纳入诊断报告）为切片 2 范畴。
+
+---
+
 ## 2026-09-08 批次三（商店包 + §12 性能实测 + §14 发布准备）
 
 > 用户指令「出商店包，然后做 §12 和 §14」。本批产出商店 ZIP、§12 四项性能数据、§14 大部分物料；顺带修复打包脚本一个真实缺陷、更新两份上架文档过时内容。基线复跑全绿（npm test 13 文件 / tsc 0 错误 / git diff --check）。
@@ -135,6 +166,7 @@
 - P2-16 闸门其余：首页区间模式全类别（本批区间只在个股页与 7x24 验证）、详情评论区间双向（08-17 已过，建议最新构建复验）、性能实测（§12）、全新 Profile 端到端（§13）、§2.4 商店包复验。
   → 进度更新 2026-09-08：详情评论区间双向 ✅（批次二 §7.4 单页双向）、性能实测 ✅（批次三 §12，mock 基准）、首页区间已覆盖关注/热门（批次二 §5.1 抽查）；其余类别区间版、全新 Profile E2E（§13）、§2.4 商店包复验仍欠（商店包已产出，见批次三）。
 - P2-15 开发项「为可可靠回溯的雪球首页类别接入连续补拉」仍为开发任务（未启动），本批验证的智能流「仅过滤已加载内容」语义与之衔接。
+  → **2026-09-08 已完成开发**（批次四，P2-17 切片 1：feed-backfill 引擎 + 统一状态单位 + 适配包 v0.4.0 backfill 配置，自动化覆盖）；雪球真机回归（7x24/关注流实机补拉）待下一真机批次。
 
 ---
 
@@ -536,11 +568,15 @@
 
 ### P2-17: 通用虚拟分页/补拉引擎（雪球闸门后、平台适配前）
 - [ ] 统一获取策略配置：原生页码、下一页、加载更多、无限滚动、严格时间排序切换
+  - ◐ 切片 1（2026-09-08 批次四）：无限滚动补拉已落地（feed-backfill.ts，数据驱动 feed_context.backfill）；原生页码策略收编与 load-more 按钮式为切片 2
 - [ ] 统一稳定 ID 去重、缓存、取消、加载超时、末页、重复页和扫描上限
+  - ◐ 补拉侧已落地：取消/末页/屏数上限/命中目标（feed 原生流承担去重与缓存语义，无需重排）；虚拟分页侧收编待切片 2
 - [ ] 统一首屏目标：过滤后第一页尽量直接出现符合条件的内容，收满即停而非无界预取
+  - ◐ 补拉按 target_hits 收满即停；虚拟分页本就收满即停；「首屏直接出现符合条件内容」的聚合目标待统一
 - [ ] 统一可信状态：仅过滤已加载内容、正在跨页查找、已扫描 N 个原生页面、已到末页、非严格时间排序
-- [ ] 所有状态可被 Popup、悬浮条和设置页消费；“未找到”不得被表达成“网站没有”
-- [ ] 用雪球个股页和至少一个首页可回溯类别做兼容回归，再允许新平台复用
+  - ◐ ScanProgress 增 unit: 'pages'|'screens'（批次四）；「非严格时间排序」以 contexts 白名单 + loaded-only 标注体现
+- [x] 所有状态可被 Popup、悬浮条和设置页消费；“未找到”不得被表达成“网站没有”（2026-09-08 批次四：Popup scanStatusText 与悬浮条按 unit 渲染「屏/原生页」双语义；「未找到」始终表达为已扫描范围而非站点无内容）
+- [ ] 用雪球个股页和至少一个首页可回溯类别做兼容回归，再允许新平台复用（真机欠，切片 1 回归批次执行）
 
 ### P2-18: 平台能力矩阵与金融场景预设
 - [ ] 设置页按“平台 + 页面类型”展示列表、评论、区间、跨页、时间精度、排序完整性和已验证页面

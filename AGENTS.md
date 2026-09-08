@@ -28,6 +28,7 @@ git diff --check
 - storage keys：`timeSettings.<domain>`、`prefs`、`adapters.remote`（见 `src/shared/storage.ts`）。
 - 消息协议（`RuntimeMessage`）：background ↔ content script 广播 `TIME_SETTINGS_UPDATED` / `TOGGLE_FILTER` / `ADAPTERS_UPDATED` / `FILTER_COUNT_UPDATED` / `FILTER_STATE_CHANGED` / `PERMISSION_REVOKED`（授权撤销，content 收到后 `stopFiltering()` 恢复 DOM 并停止，对应 background `permissions.onRemoved`，见 `src/background/service-worker.ts`）；加新消息要同步 `src/shared/types.ts`。
 - content script（`src/content/index.ts`）是核心，含雪球虚拟分页引擎 `src/content/virtual-pagination.ts`（稳定 ID 去重、缓存、200 原生页上限），修改前先读该文件头部注释。
+- **信息流连续补拉**（`src/content/feed-backfill.ts`，P2-17 切片 1）：数据驱动 `feed_context.backfill`（contexts 白名单仅声明严格时间序类别如 7x24/关注），用户手动点「查找更早的帖子」触发滚动补拉，与虚拟分页互斥；`ScanProgress.unit: 'screens'` 供 Popup/悬浮条区分「屏/原生页」双语义。修改前先读该文件头部注释；内置适配包升版本不会破坏 adapters-update.test.ts（版本断言已动态推导）。
 - 过滤标记：`data-tm-filtered` 属性（dataset 键 `tmFiltered`，含连字符会抛 SyntaxError）；hide 策略 = `style.display:none`。
 - 开发用固定扩展 id 来自 vite 配置中的 `key`，对应私钥 `scripts/keys/timemachine-dev.pem`（本地文件，**已在 .gitignore，禁止提交**）。
 
