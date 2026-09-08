@@ -69,6 +69,23 @@ function zipWithCli() {
   }
 }
 
+// Compress-Archive 会产生反斜杠分隔符的条目名（assets\foo.js），
+// 商店解包存在路径错乱/被拒风险，故优先用 Python zipfile（恒为正斜杠）。
+function zipWithPython() {
+  try {
+    execSync(
+      `python -X utf8 -c "import zipfile,sys,os; root=sys.argv[1]; out=sys.argv[2]; ` +
+        `z=zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED); ` +
+        `[z.write(os.path.join(dp,f), os.path.relpath(os.path.join(dp,f),root).replace(os.sep,'/')) for dp,_,fs in os.walk(root) for f in fs]; ` +
+        `z.close()" "${tmpDir}" "${outPath}"`,
+      { stdio: 'ignore' }
+    )
+    return existsSync(outPath)
+  } catch {
+    return false
+  }
+}
+
 function zipWithPowerShell() {
   try {
     execSync(
@@ -81,7 +98,7 @@ function zipWithPowerShell() {
   }
 }
 
-const ok = zipWithCli() || zipWithPowerShell()
+const ok = zipWithCli() || zipWithPython() || zipWithPowerShell()
 safeRm(tmpDir)
 
 if (!ok) {
