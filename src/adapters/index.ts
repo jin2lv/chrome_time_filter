@@ -88,7 +88,7 @@ export const BUILTIN_VERSIONS: { name: string; version: string }[] = BUILTIN_ADA
   version: p.version,
 }))
 
-/* ---- P2-20：支持站点能力矩阵（设置页「站点与适配」数据源） ---- */
+/* ---- P2-20/P2-18：支持站点能力矩阵（设置页「站点与适配」数据源） ---- */
 
 export interface SupportedSite {
   name: string
@@ -99,8 +99,26 @@ export interface SupportedSite {
   version: string
   /** 最后真机验证日期；未真机验证为 null（设置页显示「未真机验证」） */
   lastVerified: string | null
-  /** 能力摘要（按适配包实际配置派生，不做无依据承诺） */
+  /** 平台级能力摘要（按适配包实际配置派生，不做无依据承诺） */
   capabilities: string[]
+  /** 页面类型级能力矩阵（P2-18：列表/评论/区间/跨页/时间精度/排序完整性） */
+  pages: SitePageCapability[]
+}
+
+export interface SitePageCapability {
+  pageType: string
+  /** 该页面类型是否参与评论独立过滤 */
+  comment: boolean
+  /** 区间模式支持（判定引擎全平台通用） */
+  interval: boolean
+  /** 跨页能力描述；null = 仅当前已加载内容 */
+  crossPage: string | null
+  /** 时间精度（相对时间 ±5 分钟 / 绝对时间分钟级） */
+  precision: string
+  /** 排序完整性（loaded-only / 完整） */
+  ordering: string
+  /** 已验证页面：v1.0 以平台级 last_verified 粗粒度代替页面级验证记录 */
+  verified: boolean
 }
 
 /** 按适配包配置派生能力摘要：声明了什么才展示什么 */
@@ -114,6 +132,48 @@ function describeCapabilities(p: PlatformAdapter): string[] {
   return caps
 }
 
+/** 页面类型级能力：从适配包现有字段推导（feed_context / virtual_pagination / comment_selectors） */
+function describePages(p: PlatformAdapter): SitePageCapability[] {
+  const pages: SitePageCapability[] = []
+  const precision =
+    p.timestamp.type === 'relative' ? '相对时间（±5 分钟）' : '绝对时间（分钟级）'
+  if (p.feed_context) {
+    const backfill = p.feed_context.backfill
+    pages.push({
+      pageType: '信息流',
+      comment: false,
+      interval: true,
+      crossPage: backfill ? `滚动补拉（上限 ${backfill.max_screens} 屏）` : null,
+      precision,
+      ordering: p.feed_context.completeness === 'loaded-only' ? '仅已加载内容' : '完整',
+      verified: Boolean(p.last_verified),
+    })
+  }
+  if (p.virtual_pagination) {
+    pages.push({
+      pageType: '个股讨论页',
+      comment: false,
+      interval: true,
+      crossPage: `虚拟分页（上限 ${p.virtual_pagination.max_source_pages} 原生页）`,
+      precision,
+      ordering: '完整',
+      verified: Boolean(p.last_verified),
+    })
+  }
+  if (p.comment_selectors?.length) {
+    pages.push({
+      pageType: '帖子详情页',
+      comment: true,
+      interval: true,
+      crossPage: null,
+      precision,
+      ordering: '完整',
+      verified: Boolean(p.last_verified),
+    })
+  }
+  return pages
+}
+
 export const SUPPORTED_SITES: SupportedSite[] = BUILTIN_ADAPTERS.flatMap((pkg) =>
   pkg.platforms.map((platform) => ({
     name: platform.name,
@@ -122,6 +182,7 @@ export const SUPPORTED_SITES: SupportedSite[] = BUILTIN_ADAPTERS.flatMap((pkg) =
     version: pkg.version,
     lastVerified: platform.last_verified ?? null,
     capabilities: describeCapabilities(platform),
+    pages: describePages(platform),
   })),
 )
 

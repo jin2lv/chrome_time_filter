@@ -10,6 +10,7 @@
  */
 import { AdapterManager } from '../adapters'
 import { extractDomain, getPrefs, getTimeSettings, setTimeSettings } from '../shared/storage'
+import { lastTradingDayRange, lunchReviewRange, tradingSessionRange } from '../shared/trading'
 import type { ContentState, PlatformAdapter, TimeSettings } from '../shared/types'
 import { createIcons, Settings } from 'lucide'
 
@@ -470,6 +471,10 @@ function resolveWindowPreset(preset: string): { start: number; end: number } {
     date.setDate(date.getDate() - day + 1)
     return { start: startOfDay(date), end: now.getTime() }
   }
+  // 金融场景区间预设（P2-18）：最近一个交易日按工作日处理，不含法定节假日（v1.1 接交易日历）
+  if (preset === 'lunch_review') return lunchReviewRange(now)
+  if (preset === 'trading_session') return tradingSessionRange(now)
+  if (preset === 'trading_day') return lastTradingDayRange(now)
   return { start: startOfDay(now), end: endOfDay(now) }
 }
 

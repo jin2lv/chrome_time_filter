@@ -438,6 +438,44 @@ button:focus-visible,
   color: var(--muted);
 }
 
+/* ---- P2-18：页面类型能力矩阵 ---- */
+
+.site-pages {
+  margin-top: 2px;
+}
+
+.site-pages summary {
+  cursor: pointer;
+  color: var(--brand, #2563eb);
+  font-size: 12px;
+  user-select: none;
+}
+
+.pages-table {
+  width: 100%;
+  margin-top: 6px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.pages-table th,
+.pages-table td {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pages-table th {
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.pages-table td {
+  color: var(--text, #333);
+}
+
 @media (max-width: 700px) {
   .header-inner,
   .settings-layout {

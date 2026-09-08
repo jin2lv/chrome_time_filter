@@ -161,6 +161,42 @@ async function renderSites(): Promise<void> {
     }
 
     li.append(head, meta, memory)
+
+    // 页面类型能力矩阵（P2-18）：列表/评论/区间/跨页/时间精度/排序完整性
+    if (site.pages.length > 0) {
+      const details = document.createElement('details')
+      details.className = 'site-pages'
+      const summary = document.createElement('summary')
+      summary.textContent = `页面类型能力（${site.pages.length} 类）`
+      const table = document.createElement('table')
+      table.className = 'pages-table'
+      const thead = document.createElement('thead')
+      thead.innerHTML =
+        '<tr><th>页面类型</th><th>评论</th><th>区间</th><th>跨页</th><th>时间精度</th><th>排序完整性</th><th>已验证</th></tr>'
+      const tbody = document.createElement('tbody')
+      for (const page of site.pages) {
+        const tr = document.createElement('tr')
+        const cells = [
+          page.pageType,
+          page.comment ? '✓' : '—',
+          page.interval ? '✓' : '—',
+          page.crossPage ?? '仅已加载内容',
+          page.precision,
+          page.ordering,
+          page.verified ? '✓' : '未验证',
+        ]
+        for (const cell of cells) {
+          const td = document.createElement('td')
+          td.textContent = cell
+          tr.appendChild(td)
+        }
+        tbody.appendChild(tr)
+      }
+      table.append(thead, tbody)
+      details.append(summary, table)
+      li.append(details)
+    }
+
     ul.appendChild(li)
   }
 

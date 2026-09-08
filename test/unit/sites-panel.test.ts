@@ -62,6 +62,33 @@ const east = byName.get('东方财富资讯')
 assert.ok(east, '东方财富资讯条目必须存在')
 check('东方财富资讯能力不含评论（未配置）', !east.capabilities.includes('详情评论过滤'))
 
+// ---------- 1b. 页面类型能力矩阵（P2-18） ----------
+check('雪球 3 类页面（信息流/个股/详情）', xueqiu.pages.length === 3, JSON.stringify(xueqiu.pages.map((p) => p.pageType)))
+const xueqiuFeed = xueqiu.pages.find((p) => p.pageType === '信息流')
+assert.ok(xueqiuFeed, '雪球信息流页面条目必须存在')
+check(
+  '雪球信息流：区间✓、补拉上限 10 屏、仅已加载内容、相对时间精度',
+  xueqiuFeed.interval === true &&
+    xueqiuFeed.crossPage === '滚动补拉（上限 10 屏）' &&
+    xueqiuFeed.ordering === '仅已加载内容' &&
+    xueqiuFeed.precision.includes('相对时间'),
+)
+const xueqiuStock = xueqiu.pages.find((p) => p.pageType === '个股讨论页')
+assert.ok(xueqiuStock, '雪球个股页条目必须存在')
+check('雪球个股页：虚拟分页上限 200 原生页', xueqiuStock.crossPage === '虚拟分页（上限 200 原生页）')
+const xueqiuDetail = xueqiu.pages.find((p) => p.pageType === '帖子详情页')
+assert.ok(xueqiuDetail, '雪球详情页条目必须存在')
+check('雪球详情页：评论过滤✓、无跨页', xueqiuDetail.comment === true && xueqiuDetail.crossPage === null)
+check(
+  '同花顺无页面类型行（纯列表适配：无 feed_context/virtual/comment 配置）',
+  ths.pages.length === 0,
+  JSON.stringify(ths.pages),
+)
+check(
+  '全部平台页面行 verified 与平台级 last_verified 一致',
+  SUPPORTED_SITES.every((s) => s.pages.every((p) => p.verified === (s.lastVerified !== null))),
+)
+
 // ---------- 2. SUPPORTED_ORIGINS ----------
 check('SUPPORTED_ORIGINS 共 5 条（与 manifest optional 一致）', SUPPORTED_ORIGINS.length === 5, `got ${SUPPORTED_ORIGINS.length}`)
 check('origin 无重复', new Set(SUPPORTED_ORIGINS).size === SUPPORTED_ORIGINS.length)
