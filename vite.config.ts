@@ -82,10 +82,10 @@ const manifest = defineManifest({
     },
   ],
 
-  // P2-7：全局快捷键（设置页自定义快捷键 Chrome 限制为修饰键+字母，P2-6 待补）
+  // P2-7：全局快捷键（Ctrl+Shift+T 与 Chrome 内置「重新打开已关闭标签页」冲突，2026-09-07 真机实测被抢占；设置页自定义快捷键 Chrome 限制为修饰键+字母，P2-6 待补）
   commands: {
     'toggle-filter': {
-      suggested_key: { default: 'Ctrl+Shift+T' },
+      suggested_key: { default: 'Alt+Shift+T' },
       description: '切换当前标签页的过滤开关',
     },
   },

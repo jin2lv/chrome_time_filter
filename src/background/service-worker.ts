@@ -153,7 +153,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ADAPTERS_ALARM) void updateAdapters()
 })
 
-/* ---- P2-7：全局快捷键 Ctrl+Shift+T → 切换当前 Tab 过滤开关 ---- */
+/* ---- P2-7：全局快捷键 Alt+Shift+T → 切换当前 Tab 过滤开关（原 Ctrl+Shift+T 与 Chrome「重开标签页」冲突，2026-09-07 更换） ---- */
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== 'toggle-filter') return
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
