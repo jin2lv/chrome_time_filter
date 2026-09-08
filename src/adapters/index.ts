@@ -88,6 +88,48 @@ export const BUILTIN_VERSIONS: { name: string; version: string }[] = BUILTIN_ADA
   version: p.version,
 }))
 
+/* ---- P2-20：支持站点能力矩阵（设置页「站点与适配」数据源） ---- */
+
+export interface SupportedSite {
+  name: string
+  /** 需要授权的域名（与适配包 domains 一致；jisilu 含 www 与裸域两条） */
+  domains: string[]
+  /** 对应的授权 origin（`*://domain/*`） */
+  origins: string[]
+  version: string
+  /** 最后真机验证日期；未真机验证为 null（设置页显示「未真机验证」） */
+  lastVerified: string | null
+  /** 能力摘要（按适配包实际配置派生，不做无依据承诺） */
+  capabilities: string[]
+}
+
+/** 按适配包配置派生能力摘要：声明了什么才展示什么 */
+function describeCapabilities(p: PlatformAdapter): string[] {
+  const caps: string[] = ['帖子过滤']
+  if (p.feed_context) caps.push('信息流上下文')
+  if (p.feed_context?.backfill) caps.push('信息流补拉')
+  if (p.virtual_pagination) caps.push('个股跨页扫描')
+  if (p.comment_selectors?.length) caps.push('详情评论过滤')
+  if (p.quick_presets?.length) caps.push('快捷预设')
+  return caps
+}
+
+export const SUPPORTED_SITES: SupportedSite[] = BUILTIN_ADAPTERS.flatMap((pkg) =>
+  pkg.platforms.map((platform) => ({
+    name: platform.name,
+    domains: [...platform.domains],
+    origins: platform.domains.map((d) => `*://${d}/*`),
+    version: pkg.version,
+    lastVerified: platform.last_verified ?? null,
+    capabilities: describeCapabilities(platform),
+  })),
+)
+
+/** 全部支持站点的授权 origin 去重集合（供「授权全部金融站点」一次性申请，绝不自动调用） */
+export const SUPPORTED_ORIGINS: string[] = [
+  ...new Set(SUPPORTED_SITES.flatMap((s) => s.origins)),
+]
+
 /**
  * 轻量 semver 比较：'0.9.1' < '0.10.0'
  * @returns a > b → 1; a < b → -1; 相等 → 0

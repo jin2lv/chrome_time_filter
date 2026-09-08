@@ -39,6 +39,8 @@ export interface Adapter {
 export interface PlatformAdapter {
   name: string
   domains: string[]
+  /** 最后真机验证日期（YYYY-MM-DD，可选）：设置页能力矩阵展示，未真机验证则不填 */
+  last_verified?: string
   /** 帖子容器选择器（可多个，按优先级匹配） */
   post_selectors: string[]
   timestamp: {

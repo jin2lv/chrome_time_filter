@@ -6,6 +6,7 @@
       "domains": [
         "xueqiu.com"
       ],
+      "last_verified": "2026-09-09",
       "post_selectors": [
         "article.timeline__item",
         ".timeline__item",

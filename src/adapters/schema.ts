@@ -39,6 +39,12 @@ function validatePlatform(pl: PlatformAdapter): string[] {
   if (!Array.isArray(pl.domains) || pl.domains.length === 0) {
     errs.push('domains 必须是非空数组')
   }
+  // last_verified（可选，P2-20）：最后真机验证日期，用于设置页能力矩阵
+  if (pl.last_verified !== undefined) {
+    if (typeof pl.last_verified !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(pl.last_verified)) {
+      errs.push('last_verified 必须是 YYYY-MM-DD 格式字符串')
+    }
+  }
   if (!Array.isArray(pl.post_selectors) || pl.post_selectors.length === 0) {
     errs.push('post_selectors 必须是非空数组')
   }

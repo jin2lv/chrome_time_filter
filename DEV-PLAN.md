@@ -1,5 +1,27 @@
 # TimeMachine 时光机 — 开发计划与验证清单
 
+## 2026-09-09 批次七（批次 C：P2-20 多站授权与每站设置）
+
+> 纯开发批次。落地 P2-20 四个子项的数据层与设置页 UI；授权弹窗链路的真机验证按计划攒到批次 E（机制本身已在批次六商店包 §2.4/§2.5 全链路闭环，本批复用同一 permissions API）。基线全绿：`npm test` 15 文件（新增 sites-panel.test.ts，已挂 package.json）、`npx tsc --noEmit` 0 错误、`rm -rf dist && npm run build`（loader ✅）、`npm run test:build`、`git diff --check`；另做 dist-test 重载后的设置页**渲染冒烟**（四平台矩阵/状态标签/能力摘要/记忆管理/授权全部按钮全部正确渲染，无 JS 错误）。
+
+### 落地清单
+
+- `src/shared/types.ts`：`PlatformAdapter.last_verified?: string`（最后真机验证日期，可选）
+- `src/adapters/schema.ts`：last_verified 校验（可选，YYYY-MM-DD 格式）
+- `src/adapters/xueqiu.json`：`"last_verified": "2026-09-09"`（今日三批真机验证背书）；同花顺/集思录/东财资讯不填 → 设置页如实显示「未真机验证」
+- `src/adapters/jisilu.json`：domains 补 `www.jisilu.cn`（§2.3 双 origin 承诺落到适配包数据这一单一事实源；授权请求一次覆盖双域；匹配语义不变，此前经 endsWith 已匹配 www）
+- `src/adapters/index.ts`：`SUPPORTED_SITES`（平台/域名/origin/版本/验证日期/能力摘要——能力按适配包实际配置派生：帖子过滤、信息流上下文、信息流补拉、个股跨页扫描、详情评论过滤、快捷预设）+ `SUPPORTED_ORIGINS`（5 条去重，与 manifest optional 一致）
+- `src/options/index.html` + `main.ts` + `style.css`：「站点与适配」重构为支持站点矩阵——每平台一行（授权状态标签 + 单站授权/移除 + v版本·验证日期·能力摘要 + 每站时间设置记忆摘要（timeSettings.<domain>：模式/策略）与「重置此站点设置」）；顶部「授权全部金融站点」按钮（一次 permissions.request 全部 5 origin，**用户主动点击，绝不自动申请**）；平台外的其他已授权 origin 兜底列表（dist-test 预授予场景）
+- `test/unit/sites-panel.test.ts`（新，22 项）：矩阵派生（4 平台、jisilu 双 origin、能力按配置、last_verified 仅雪球）、SUPPORTED_ORIGINS 与 manifest 一致、schema 新字段合法/非法、全部内置包仍过校验
+
+### 设计与范围决策
+
+- **每站记忆**：`timeSettings.<domain>` 早已按域名持久化 mode/cutoff/window/strategy（P1 起即"每站记忆"），本批补齐管理面（摘要+重置）；「同域名不同页面继承」即域名级共享的现状语义，**页面级覆盖明确归 P3-5**（"按平台或页面类型覆盖默认模式与预设"），不在 v1.0 扩域。
+- 能力摘要为配置派生（声明什么展示什么），不为未验收平台背书；最后验证日期数据驱动，后续真机验收各平台时随适配包更新。
+- 授权 API 与批次六验证过的 permissions.request/remove 完全同路；按钮链路真机验证（弹窗形态/拒绝路径）攒到批次 E 雪球全量回归。
+
+---
+
 ## 2026-09-09 批次六（批次 B：闭闸门——§13 全新 Profile E2E + §2.4 商店包撤销授权）
 
 > 承接批次三产出的商店包与批次五的遗留，完成 P2-16 闸门最后两项真机验证。**P2-16 正式关闭**（附一项如实标注的例外，见下）。出包：旧 `artifacts/timemachine-v1.0.0.zip` 留档为 `timemachine-v1.0.0-20260908-archive.zip`，`npm run package` 重出（27 条目全正斜杠、v1.0.0、无 key、**必授权限为空 + 5 个 optional**——§2.4 可撤销的商店包形态）。全新 Profile 经 `--user-data-dir` 独立目录 + 解包 ZIP 加载（商店 ID `phpmhbnkhjefkeedcapibhjidlkkolko`）。验证明细回写 VERIFY-CHECKLIST §1.1/§2.1/§2.2/§2.4/§2.5/§13 及历史表。
@@ -654,10 +676,10 @@
 - [ ] 将占位远程地址替换为真实发布源，增加完整性校验、版本回退和应急停用策略
 
 ### P2-20: 多站授权与每站设置
-- [ ] 设置页列出全部支持站点及授权状态，支持单站授权和撤销
-- [ ] 提供用户主动点击的“授权全部金融站点”，不在安装时静默申请
-- [ ] 每站展示最后验证日期、适配包版本和页面能力摘要
-- [ ] 每站记忆默认时间模式、过滤策略和预设；同域名不同页面允许继承后覆盖
+- [x] 设置页列出全部支持站点及授权状态，支持单站授权和撤销（2026-09-09 批次七：支持站点矩阵，4 平台行含状态标签与单站授权/移除；授权弹窗真机验证攒到批次 E，机制同批次六 §2.4/§2.5 已闭环）
+- [x] 提供用户主动点击的“授权全部金融站点”，不在安装时静默申请（2026-09-09 批次七：设置页顶部按钮，一次 request 全部 5 origin，附「绝不自动申请」承诺文案）
+- [x] 每站展示最后验证日期、适配包版本和页面能力摘要（2026-09-09 批次七：能力按适配包配置派生；验证日期数据驱动 last_verified——雪球 2026-09-09，其余如实「未真机验证」）
+- [x] 每站记忆默认时间模式、过滤策略和预设；同域名不同页面允许继承后覆盖（记忆=timeSettings.<domain> 既有持久化（模式/策略/边界），本批补管理面：设置页摘要+重置；「同域不同页面继承」为域名级共享现状语义，页面级覆盖归 P3-5）
 
 ### P2-21: 其他金融平台适配（完成 P2-17 至 P2-20 后串行推进）
 - [ ] 东方财富股吧 `guba.eastmoney.com`；文档禁用含混简称“股吧”

@@ -1,16 +1,18 @@
 /**
- * Options 设置页（P2-6 完善）
+ * Options 设置页（P2-6 完善，P2-20 多站授权与每站设置）
  *
  * 配置项（PRD F5）：
  * - 默认过滤策略（hide/collapse）
  * - 角标显示计数
  * - 评论无时间戳回退策略（P2-4：全部显示/默认折叠）
- * - 已授权站点管理（chrome.permissions：列出/移除）
+ * - 站点与适配（P2-20）：支持站点能力矩阵（平台+授权状态+版本+验证日期+能力摘要）、
+ *   单站授权/撤销、「授权全部金融站点」（用户主动点击，绝不静默申请）、
+ *   每站时间设置记忆摘要与重置（timeSettings.<domain>）
  * - 适配包版本信息（内置包列表）
  * - 适配包自动更新开关（P2-5 使用）
  */
-import { BUILTIN_VERSIONS } from '../adapters'
-import { getPrefs, setPrefs } from '../shared/storage'
+import { BUILTIN_VERSIONS, SUPPORTED_ORIGINS, SUPPORTED_SITES } from '../adapters'
+import { getPrefs, getTimeSettings, removeTimeSettings, setPrefs } from '../shared/storage'
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id)
@@ -48,7 +50,7 @@ async function init(): Promise<void> {
   // 版本信息
   $('subtitle').textContent = `v${chrome.runtime.getManifest().version}`
   renderAdapters()
-  void renderPermissions()
+  void renderSites()
   bindNavigation()
 }
 
@@ -77,19 +79,108 @@ function renderAdapters(): void {
   }
 }
 
-/** 已授权站点（optional host permissions） */
-async function renderPermissions(): Promise<void> {
-  const ul = $('permission-list')
-  ul.innerHTML = ''
+/** 已授权 origin 集合（optional host permissions） */
+async function grantedOrigins(): Promise<Set<string>> {
   const perms = await chrome.permissions.getAll()
-  const origins = (perms.origins ?? []).filter((o) => o.startsWith('*://'))
-  if (origins.length === 0) {
+  return new Set((perms.origins ?? []).filter((o) => o.startsWith('*://')))
+}
+
+function describeMode(mode: 'cutoff' | 'window' | undefined): string {
+  return mode === 'window' ? '区间' : '截止'
+}
+
+function describeStrategy(strategy: string | undefined): string {
+  return strategy === 'collapse' ? '折叠' : '隐藏'
+}
+
+/**
+ * 支持站点能力矩阵（P2-20）：
+ * 平台 + 授权状态 + 单站授权/撤销 + 版本/验证日期/能力摘要 + 每站时间设置记忆（摘要/重置）。
+ * 「授权全部金融站点」为用户主动点击的一次性申请，绝不自动调用。
+ */
+async function renderSites(): Promise<void> {
+  const ul = $('site-list')
+  ul.innerHTML = ''
+  const granted = await grantedOrigins()
+
+  for (const site of SUPPORTED_SITES) {
+    const isGranted = site.origins.every((o) => granted.has(o))
     const li = document.createElement('li')
-    li.textContent = '（尚未授权任何站点）'
+    li.className = 'site-row'
+
+    const head = document.createElement('div')
+    head.className = 'site-head'
+
+    const name = document.createElement('span')
+    name.className = 'site-name'
+    name.textContent = site.name
+    const domain = document.createElement('span')
+    domain.className = 'site-domain'
+    domain.textContent = site.domains.join(' / ')
+
+    const status = document.createElement('span')
+    status.className = `site-status ${isGranted ? 'granted' : 'not-granted'}`
+    status.textContent = isGranted ? '已授权' : '未授权'
+
+    const action = document.createElement('button')
+    action.className = isGranted ? 'remove-btn' : 'grant-btn'
+    action.textContent = isGranted ? '移除' : '授权'
+    action.addEventListener('click', async () => {
+      if (isGranted) {
+        await chrome.permissions.remove({ origins: site.origins })
+      } else {
+        const ok = await chrome.permissions.request({ origins: site.origins })
+        if (!ok) return
+      }
+      void renderSites()
+    })
+
+    head.append(name, domain, status, action)
+
+    const meta = document.createElement('div')
+    meta.className = 'site-meta'
+    const verified = site.lastVerified ? `验证于 ${site.lastVerified}` : '未真机验证'
+    meta.textContent = `适配包 v${site.version} · ${verified} · 能力：${site.capabilities.join('、')}`
+
+    const memory = document.createElement('div')
+    memory.className = 'site-memory'
+    const primaryDomain = site.domains[0]
+    const saved = await getTimeSettings(primaryDomain)
+    if (saved && (saved.cutoff !== null || saved.window)) {
+      memory.textContent = `已记忆时间设置：${describeMode(saved.mode)} · ${describeStrategy(saved.strategy)}`
+      const reset = document.createElement('button')
+      reset.textContent = '重置此站点设置'
+      reset.className = 'remove-btn reset-btn'
+      reset.addEventListener('click', async () => {
+        await removeTimeSettings(primaryDomain)
+        void renderSites()
+      })
+      memory.append(reset)
+    } else {
+      memory.textContent = '未记忆时间设置（首次在该站点设定后保存）'
+    }
+
+    li.append(head, meta, memory)
     ul.appendChild(li)
+  }
+
+  const grantAll = $<HTMLButtonElement>('grant-all-btn')
+  grantAll.onclick = async () => {
+    await chrome.permissions.request({ origins: SUPPORTED_ORIGINS })
+    void renderSites()
+  }
+
+  // 平台之外的其他已授权 origin（如 dist-test 预授予条目），有则列出
+  const others = [...granted].filter((o) => !SUPPORTED_ORIGINS.includes(o))
+  const box = $('other-origins')
+  if (others.length === 0) {
+    box.hidden = true
     return
   }
-  for (const origin of origins) {
+  box.hidden = false
+  const otherUl = $('other-origins-list')
+  otherUl.innerHTML = ''
+  for (const origin of others) {
     const li = document.createElement('li')
     li.className = 'perm-row'
     const span = document.createElement('span')
@@ -99,10 +190,10 @@ async function renderPermissions(): Promise<void> {
     btn.className = 'remove-btn'
     btn.addEventListener('click', async () => {
       await chrome.permissions.remove({ origins: [origin] })
-      void renderPermissions()
+      void renderSites()
     })
     li.append(span, btn)
-    ul.appendChild(li)
+    otherUl.appendChild(li)
   }
 }
 

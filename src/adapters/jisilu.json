@@ -3,7 +3,7 @@
   "platforms": [
     {
       "name": "集思录",
-      "domains": ["jisilu.cn"],
+      "domains": ["jisilu.cn", "www.jisilu.cn"],
       "post_selectors": [
         ".aw-question-list > .aw-item",
         ".aw-dynamic-topic > .aw-item[id^='answer_list_']"
