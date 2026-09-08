@@ -15,6 +15,7 @@
  */
 import { AdapterManager } from '../adapters'
 import { VirtualPaginationController, type PostDecision } from './virtual-pagination'
+import { FeedBackfillController } from './feed-backfill'
 import { extractDomain, getPrefs, getTimeSettings } from '../shared/storage'
 import { extractTimestampText, parseTimestamp } from '../shared/time'
 import type {
@@ -47,6 +48,7 @@ let virtualTransitionId = 0
 let lastScanReapplyAt = 0 // 虚拟分页 DOM 未就绪时对 reapplyAll 的节流时间戳
 let feedContextValue = ''
 let feedRestartTimer: ReturnType<typeof setTimeout> | null = null
+let feedBackfill: FeedBackfillController | null = null
 let completeness: ContentCompleteness = 'complete'
 let diagnostics: TimeDiagnostic[] = []
 let scanProgress: ScanProgress | undefined
@@ -253,6 +255,8 @@ function reapplyAll(): void {
   virtualPagination?.destroy()
   virtualPagination = null
   virtualContextValue = ''
+  feedBackfill?.destroy()
+  feedBackfill = null
   // 恢复所有标记元素（还原原始 display）
   document
     .querySelectorAll(`[${FILTERED_ATTR}="1"]`)
@@ -275,6 +279,43 @@ function reapplyAll(): void {
     : 'complete'
   scanExisting()
   report()
+  mountFeedBackfill()
+}
+
+// ---------- 信息流连续补拉（P2-17 切片 1） ----------
+
+function hasTimeBoundary(): boolean {
+  return settings?.mode === 'cutoff'
+    ? settings.cutoff !== null
+    : settings?.window?.start != null && settings.window.end != null
+}
+
+/** 挂载/重建信息流补拉入口；上下文不在适配包白名单内则静默不挂载 */
+function mountFeedBackfill(): void {
+  feedBackfill?.destroy()
+  feedBackfill = null
+  const config = adapter?.feed_context?.backfill
+  if (!config || !adapter || !settings || !enabled || !hasTimeBoundary()) return
+  if (virtualPagination || virtualTransitionActive) return
+  if (!feedContextEnabled()) return
+  feedBackfill = FeedBackfillController.mount({
+    config,
+    currentContext: currentFeedContext(),
+    postSelector: adapter.post_selectors.join(','),
+    // 判定仅供命中统计；过滤/隐藏与计数仍由既有 observer → processPost 链唯一负责
+    decide: decidePost,
+    onStateChange: (progress) => {
+      scanProgress = progress
+      completeness = progress.state === 'loading'
+        ? 'scanning'
+        : progress.state === 'exhausted'
+          ? 'exhausted'
+          : progress.state === 'error'
+            ? 'error'
+            : 'loaded-only'
+      report()
+    },
+  })
 }
 
 // ---------- 配置驱动虚拟分页 ----------
@@ -466,11 +507,14 @@ function bannerText(): string {
   const boundary = settings!.mode === 'window'
     ? `区间: ${fmtCutoff(settings!.window!.start!)} 至 ${fmtCutoff(settings!.window!.end!)}`
     : `截止: ${fmtCutoff(settings!.cutoff!)}`
+  const scanText = scanProgress
+    ? ` | 已扫描 ${scanProgress.scannedPages} ${scanProgress.unit === 'screens' ? '屏' : '个原始页'}`
+    : ''
   return (
     `⏳ 时光机已激活 | ${boundary} | 已过滤 ${filteredCount} 条` +
     (unparseableCount > 0 ? `（${unparseableCount} 条无法解析）` : '') +
     (completeness === 'loaded-only' ? ' | 仅过滤已加载内容' : '') +
-    (scanProgress ? ` | 已扫描 ${scanProgress.scannedPages} 个原始页` : '')
+    scanText
   )
 }
 
@@ -718,6 +762,8 @@ function stopFiltering(): void {
   }
   virtualPagination?.destroy()
   virtualPagination = null
+  feedBackfill?.destroy()
+  feedBackfill = null
   // 恢复所有被过滤元素与占位条
   document
     .querySelectorAll(`[${FILTERED_ATTR}="1"]`)
@@ -854,6 +900,7 @@ async function init(): Promise<void> {
   scanExisting()
   startObserver()
   scheduleMismatchCheck()
+  mountFeedBackfill()
   // 后台标签可能因 Chrome 节流/内存回收丢失变异处理（真机案例：区间模式下隔夜空闲后
   // 新帖未被过滤，重新保存设置才恢复）。回到前台时对未处理节点增量补扫：
   // processPost 以 processed WeakSet 去重；虚拟会话活跃时 startVirtualPagination 直接返回，不影响其收集。

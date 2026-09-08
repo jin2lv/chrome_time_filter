@@ -106,9 +106,19 @@ let removedListener: ((removed: { origins: string[] }) => void) | null = null
 // prefs：自动更新开启
 storageMap.set('prefs', { autoUpdateAdapters: true, commentNoTime: 'show' })
 
-// 构造远程包（比当前内置雪球 0.3.0 更新的 0.4.0）
+const { updateAdapters } = await import('../../src/background/service-worker')
+const { AdapterManager } = await import('../../src/adapters')
+const { getRemoteAdapter } = await import('../../src/shared/storage')
+
+// 构造远程包（比当前内置雪球版本更高一个小版本；内置版本随功能批次演进，此处动态推导）
+const builtinVersion = AdapterManager.getPackageFor('xueqiu.com')?.version ?? '0.0.0'
+const bumpMinor = (v: string): string => {
+  const [major, minor, patch] = v.split('.').map((n) => parseInt(n, 10))
+  return `${major}.${minor + 1}.${patch}`
+}
+const remoteVersion = bumpMinor(builtinVersion)
 const remotePkg = {
-  version: '0.4.0',
+  version: remoteVersion,
   platforms: [
     {
       name: '雪球',
@@ -120,10 +130,6 @@ const remotePkg = {
   ],
 }
 
-const { updateAdapters } = await import('../../src/background/service-worker')
-const { AdapterManager } = await import('../../src/adapters')
-const { getRemoteAdapter } = await import('../../src/shared/storage')
-
 // 2a. 远程版本更新 → 更新成功 + 存储写入 + 广播
 ;(globalThis as Record<string, unknown>).fetch = async () => ({
   ok: true,
@@ -132,15 +138,15 @@ const { getRemoteAdapter } = await import('../../src/shared/storage')
 let r = await updateAdapters()
 check('新版本 → 更新成功', r.updated === true, JSON.stringify(r))
 const stored = await getRemoteAdapter()
-check('storage 已写入远程包 v0.4.0', stored?.version === '0.4.0', stored?.version ?? 'null')
+check(`storage 已写入远程包 v${remoteVersion}`, stored?.version === remoteVersion, stored?.version ?? 'null')
 check('已广播 ADAPTERS_UPDATED', sendMessages.some((m) => (m as { type?: string }).type === 'ADAPTERS_UPDATED'))
 const ths = AdapterManager.getAdapter('xueqiu.com')
 check('AdapterManager 使用远程包', ths?.name === '雪球' && (ths as unknown as { version?: string }).version === undefined)
 
 // 2a-2. 扩展升级后，旧远程缓存不得覆盖版本更高的内置适配包
-AdapterManager.setRemoteAdapters([{ ...remotePkg, version: '0.2.0' }])
+AdapterManager.setRemoteAdapters([{ ...remotePkg, version: '0.1.0' }])
 const builtinWins = AdapterManager.getPackageFor('xueqiu.com')
-check('旧远程缓存不覆盖新版内置包', builtinWins?.version === '0.3.0', builtinWins?.version ?? 'null')
+check('旧远程缓存不覆盖新版内置包', builtinWins?.version === builtinVersion, builtinWins?.version ?? 'null')
 AdapterManager.setRemoteAdapters([remotePkg])
 
 // 2b. 旧版本 → 跳过

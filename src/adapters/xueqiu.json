@@ -1,10 +1,16 @@
 {
-  "version": "0.3.0",
+  "version": "0.4.0",
   "platforms": [
     {
       "name": "雪球",
-      "domains": ["xueqiu.com"],
-      "post_selectors": ["article.timeline__item", ".timeline__item", ".timeline__live tr"],
+      "domains": [
+        "xueqiu.com"
+      ],
+      "post_selectors": [
+        "article.timeline__item",
+        ".timeline__item",
+        ".timeline__live tr"
+      ],
       "timestamp": {
         "selector": "a.date-and-source, td:first-child",
         "type": "relative",
@@ -12,19 +18,47 @@
         "date_text_selector": ".home__timeline-live__hd",
         "date_text_scope_selector": ".timeline__live",
         "patterns": [
-          { "regex": "^(\\d+)秒前", "unit": "second", "multiplier": 1 },
-          { "regex": "^刚刚", "unit": "second", "multiplier": 0 },
-          { "regex": "^(\\d+)分钟前", "unit": "minute", "multiplier": 1 },
-          { "regex": "^(\\d+)小时前", "unit": "hour", "multiplier": 1 },
-          { "regex": "^昨天$", "unit": "day", "multiplier": 1 },
-          { "regex": "^(\\d+)天前", "unit": "day", "multiplier": 1 }
+          {
+            "regex": "^(\\d+)秒前",
+            "unit": "second",
+            "multiplier": 1
+          },
+          {
+            "regex": "^刚刚",
+            "unit": "second",
+            "multiplier": 0
+          },
+          {
+            "regex": "^(\\d+)分钟前",
+            "unit": "minute",
+            "multiplier": 1
+          },
+          {
+            "regex": "^(\\d+)小时前",
+            "unit": "hour",
+            "multiplier": 1
+          },
+          {
+            "regex": "^昨天$",
+            "unit": "day",
+            "multiplier": 1
+          },
+          {
+            "regex": "^(\\d+)天前",
+            "unit": "day",
+            "multiplier": 1
+          }
         ],
         "attr": null
       },
-      "comment_selectors": [".comment__item"],
+      "comment_selectors": [
+        ".comment__item"
+      ],
       "comment_timestamp_selector": "span.time",
       "feed_context": {
-        "path_patterns": ["^/$"],
+        "path_patterns": [
+          "^/$"
+        ],
         "active_selectors": [
           ".home-timeline-tabs a.active",
           ".timeline__tab__tags a.active"
@@ -34,15 +68,43 @@
           ".timeline__tab__tags a"
         ],
         "wait_ms": 350,
-        "completeness": "loaded-only"
+        "completeness": "loaded-only",
+        "backfill": {
+          "contexts": [
+            "7x24",
+            "关注 / 全部"
+          ],
+          "scroll_delay_ms": 1200,
+          "max_screens": 10,
+          "target_hits": 10,
+          "end_stall_count": 2
+        }
       },
       "quick_presets": [
-        { "label": "1小时前", "value": "1_hour_ago" },
-        { "label": "今日0点", "value": "today_midnight" },
-        { "label": "昨日0点", "value": "yesterday_midnight" },
-        { "label": "今天09:15", "value": "today_0915" },
-        { "label": "今天09:30", "value": "today_0930" },
-        { "label": "昨日收盘前", "value": "yesterday_1500" }
+        {
+          "label": "1小时前",
+          "value": "1_hour_ago"
+        },
+        {
+          "label": "今日0点",
+          "value": "today_midnight"
+        },
+        {
+          "label": "昨日0点",
+          "value": "yesterday_midnight"
+        },
+        {
+          "label": "今天09:15",
+          "value": "today_0915"
+        },
+        {
+          "label": "今天09:30",
+          "value": "today_0930"
+        },
+        {
+          "label": "昨日收盘前",
+          "value": "yesterday_1500"
+        }
       ],
       "virtual_pagination": {
         "list_selector": ".stock-timeline > .status-list",
@@ -68,7 +130,7 @@
         "next_delay_min_ms": 400,
         "next_delay_max_ms": 800
       },
-      "notes": "DOM 取证于 2026-08-14：首页一级类别由 .home-timeline-tabs a.active 标识，关注（全部/关注精选/只看原发/未分组）和自选（全部/公告/新闻）二级类别由 .timeline__tab__tags a.active 标识；普通首页流使用 article.timeline__item、a.date-and-source[data-id]，7x24 使用 .timeline__live tr，并将分组标题 .home__timeline-live__hd 与行内首列时间组合解析。首页均为智能流或按需加载流，明确标记为仅过滤已加载内容。个股页全部/讨论/投资者关系/交易/资讯/公告六类共用 .stock-timeline > .status-list、article.timeline__item、a.date-and-source[data-id] 与原生分页；类别由 .stock-timeline-tabs a.active 标识，切换类别时重建独立虚拟分页会话。编辑帖格式为 '修改于MM-DD HH:mm'。虚拟分页跨原生页按需聚合，每虚拟页 10 条，单次会话最多扫描 200 个原生页。详情页评论 .comment__item，时间戳 span.time。"
+      "notes": "DOM 取证于 2026-08-14：首页一级类别由 .home-timeline-tabs a.active 标识，关注（全部/关注精选/只看原发/未分组）和自选（全部/公告/新闻）二级类别由 .timeline__tab__tags a.active 标识；普通首页流使用 article.timeline__item、a.date-and-source[data-id]，7x24 使用 .timeline__live tr，并将分组标题 .home__timeline-live__hd 与行内首列时间组合解析。首页均为智能流或按需加载流，明确标记为仅过滤已加载内容；其中 7x24 与关注流为严格时间序，声明 backfill 支持用户手动触发的连续补拉（滚动节流 1200ms，上限 10 屏），热度/智能流不声明、不做不可信回溯。个股页全部/讨论/投资者关系/交易/资讯/公告六类共用 .stock-timeline > .status-list、article.timeline__item、a.date-and-source[data-id] 与原生分页；类别由 .stock-timeline-tabs a.active 标识，切换类别时重建独立虚拟分页会话。编辑帖格式为 '修改于MM-DD HH:mm'。虚拟分页跨原生页按需聚合，每虚拟页 10 条，单次会话最多扫描 200 个原生页。详情页评论 .comment__item，时间戳 span.time。"
     }
   ]
 }

@@ -493,7 +493,7 @@ function render(): void {
   )
   const loadedOnly = state.completeness === 'loaded-only'
   const scanMessage = state.scan
-    ? scanStatusText(state.scan.state, state.scan.scannedPages, state.scan.maxPages)
+    ? scanStatusText(state.scan)
     : ''
   scopeStatus.hidden = !loadedOnly && !scanMessage
   scopeStatus.textContent = loadedOnly
@@ -501,7 +501,16 @@ function render(): void {
     : scanMessage
 }
 
-function scanStatusText(state: NonNullable<ContentState['scan']>['state'], scanned: number, max: number): string {
+function scanStatusText(scan: NonNullable<ContentState['scan']>): string {
+  const { state, scannedPages: scanned, maxPages: max, unit } = scan
+  // 原生页码扫描（个股页）按「原生页面」计数；信息流滚动补拉按「屏」计数（P2-17 切片 1）
+  if (unit === 'screens') {
+    if (state === 'loading') return `正在查找更早的帖子，已加载 ${scanned} 屏。`
+    if (state === 'exhausted') return `已加载 ${scanned} 屏，到达信息流末页。`
+    if (state === 'limit') return `已加载 ${scanned} 屏，达到 ${max} 屏安全上限。`
+    if (state === 'cancelled') return `补拉已取消，已加载 ${scanned} 屏。`
+    return scanned > 0 ? `已加载 ${scanned} 屏。` : ''
+  }
   if (state === 'loading') return `正在跨页查找，已扫描 ${scanned} 个原生页面。`
   if (state === 'exhausted') return `已扫描 ${scanned} 个原生页面，并到达网站末页。`
   if (state === 'limit') return `已扫描 ${scanned} 个原生页面，达到 ${max} 页安全上限。`

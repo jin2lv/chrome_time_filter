@@ -180,6 +180,32 @@ function validatePlatform(pl: PlatformAdapter): string[] {
       if (feed.completeness !== 'loaded-only' && feed.completeness !== 'complete') {
         errs.push('feed_context.completeness 必须是 loaded-only/complete')
       }
+      // backfill（可选，P2-17 切片 1）：信息流连续补拉配置
+      if (feed.backfill !== undefined) {
+        const backfill = feed.backfill
+        if (!backfill || typeof backfill !== 'object') {
+          errs.push('feed_context.backfill 必须是对象')
+        } else {
+          if (!Array.isArray(backfill.contexts) || backfill.contexts.length === 0 || backfill.contexts.some((v) => typeof v !== 'string' || !v)) {
+            errs.push('feed_context.backfill.contexts 必须是非空字符串数组')
+          }
+          if (!Number.isFinite(backfill.scroll_delay_ms) || backfill.scroll_delay_ms < 0) {
+            errs.push('feed_context.backfill.scroll_delay_ms 必须是非负数')
+          }
+          if (!Number.isInteger(backfill.max_screens) || backfill.max_screens < 1) {
+            errs.push('feed_context.backfill.max_screens 必须是正整数')
+          }
+          if (!Number.isInteger(backfill.target_hits) || backfill.target_hits < 1) {
+            errs.push('feed_context.backfill.target_hits 必须是正整数')
+          }
+          if (
+            backfill.end_stall_count !== undefined &&
+            (!Number.isInteger(backfill.end_stall_count) || backfill.end_stall_count < 1)
+          ) {
+            errs.push('feed_context.backfill.end_stall_count 必须是正整数')
+          }
+        }
+      }
     }
   }
   if (pl.virtual_pagination !== undefined) {

@@ -85,6 +85,12 @@ export interface PlatformAdapter {
     wait_ms: number
     /** 智能/热度流无法保证找全时间范围时必须明确标注 */
     completeness: 'loaded-only' | 'complete'
+    /**
+     * 可选连续补拉（P2-17 切片 1）：用户点击「查找更早的帖子」后按需向下滚动加载，
+     * 直到收满目标条数 / 达到屏数上限 / 到达末页 / 用户取消。
+     * 仅严格时间排序的类别可声明（contexts 白名单），热度/智能流不得声明。
+     */
+    backfill?: FeedBackfillConfig
   }
   /** 快捷预设 */
   quick_presets: { label: string; value: string }[]
@@ -159,6 +165,20 @@ export interface ContentState {
 
 export type ContentCompleteness = 'complete' | 'loaded-only' | 'scanning' | 'exhausted' | 'error'
 
+/** 信息流连续补拉配置（P2-17 切片 1）；仅严格时间排序的类别可声明 */
+export interface FeedBackfillConfig {
+  /** 允许补拉的上下文值（与 currentFeedContext() 精确匹配） */
+  contexts: string[]
+  /** 每次滚动加载的间隔 ms（风控节流，数据驱动，运行时不强制下限） */
+  scroll_delay_ms: number
+  /** 单次补拉会话累计滚动屏数上限 */
+  max_screens: number
+  /** 新收集到多少条符合时间条件的帖子后停止 */
+  target_hits: number
+  /** 连续多少次滚动无新增内容判定为末页（缺省 2） */
+  end_stall_count?: number
+}
+
 export interface TimeDiagnostic {
   kind: 'post' | 'comment'
   raw: string
@@ -173,4 +193,6 @@ export interface ScanProgress {
   scannedPages: number
   maxPages: number
   currentSourcePage: string
+  /** 计数单位：原生页码扫描为 pages（缺省），信息流滚动补拉为 screens（P2-17 切片 1） */
+  unit?: 'pages' | 'screens'
 }
