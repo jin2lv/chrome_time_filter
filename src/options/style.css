@@ -351,6 +351,12 @@ button:focus-visible,
   font-size: 11px;
 }
 
+.site-action-status {
+  margin: 6px 0 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
 .site-row {
   display: flex;
   flex-direction: column;

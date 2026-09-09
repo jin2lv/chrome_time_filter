@@ -24,6 +24,7 @@
 
 ### 范围决策（如实记录）
 
+- **子代理代码审查（cc5a997+73c64dd）结论：可以合入，无 P1**。两个 P2 已修复（4e945aa）：①设置页 renderSites 渲染竞态（generation token + DocumentFragment 一次性替换）；②options 四处 permissions.request/remove 无异常兜底（统一 helper + try/catch + 5s 错误提示行）。P3 六条（isGranted 改 some/部分授权态、last_verified 日期合法性、周末交易时段 title 注明、跨月回溯测试用例、SUPPORTED_ORIGINS 与 vite.config 同步注释、primaryDomain 改用 extractDomain）登记为可选优化，未修。
 - 健康状态 v1.0 为两档：已验证（绿）/未真机验证（灰），数据驱动；解析率/匹配数等运行时健康指标归 P2-19/P2-22，不在本批虚构。
 - 页面类型级「已验证」以平台级 last_verified 粗粒度代替（页面级验证记录数据源尚不存在），表格列名如实为「已验证」。
 - 「某交易日全天」v1.0 语义落地为「最近一个交易日全天」；「自定义事件窗口」由既有自定义起止输入承担。

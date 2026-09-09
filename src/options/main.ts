@@ -93,16 +93,52 @@ function describeStrategy(strategy: string | undefined): string {
   return strategy === 'collapse' ? '折叠' : '隐藏'
 }
 
+/** 渲染序号：renderSites 含多处 await，快速连续操作时过期渲染直接丢弃，避免行重复 */
+let sitesRenderSeq = 0
+
+/** 权限操作的兜底提示（Chrome 抛 RuntimeError 时给出可见反馈，而非静默 unhandled rejection） */
+let siteActionStatusTimer: ReturnType<typeof setTimeout> | null = null
+
+function showSiteActionError(message: string): void {
+  const el = $('site-action-status')
+  el.textContent = message
+  el.hidden = false
+  if (siteActionStatusTimer) clearTimeout(siteActionStatusTimer)
+  siteActionStatusTimer = setTimeout(() => {
+    el.hidden = true
+  }, 5000)
+}
+
+async function requestOrigins(origins: string[]): Promise<boolean> {
+  try {
+    return await chrome.permissions.request({ origins })
+  } catch (err) {
+    showSiteActionError('授权请求失败：' + (err instanceof Error ? err.message : String(err)))
+    return false
+  }
+}
+
+async function removeOrigins(origins: string[]): Promise<boolean> {
+  try {
+    await chrome.permissions.remove({ origins })
+    return true
+  } catch (err) {
+    showSiteActionError('移除授权失败：' + (err instanceof Error ? err.message : String(err)))
+    return false
+  }
+}
+
 /**
  * 支持站点能力矩阵（P2-20）：
  * 平台 + 授权状态 + 单站授权/撤销 + 版本/验证日期/能力摘要 + 每站时间设置记忆（摘要/重置）。
  * 「授权全部金融站点」为用户主动点击的一次性申请，绝不自动调用。
  */
 async function renderSites(): Promise<void> {
-  const ul = $('site-list')
-  ul.innerHTML = ''
+  const seq = ++sitesRenderSeq
   const granted = await grantedOrigins()
+  if (seq !== sitesRenderSeq) return
 
+  const rows: HTMLElement[] = []
   for (const site of SUPPORTED_SITES) {
     const isGranted = site.origins.every((o) => granted.has(o))
     const li = document.createElement('li')
@@ -126,12 +162,10 @@ async function renderSites(): Promise<void> {
     action.className = isGranted ? 'remove-btn' : 'grant-btn'
     action.textContent = isGranted ? '移除' : '授权'
     action.addEventListener('click', async () => {
-      if (isGranted) {
-        await chrome.permissions.remove({ origins: site.origins })
-      } else {
-        const ok = await chrome.permissions.request({ origins: site.origins })
-        if (!ok) return
-      }
+      const ok = isGranted
+        ? await removeOrigins(site.origins)
+        : await requestOrigins(site.origins)
+      if (!ok) return
       void renderSites()
     })
 
@@ -146,6 +180,7 @@ async function renderSites(): Promise<void> {
     memory.className = 'site-memory'
     const primaryDomain = site.domains[0]
     const saved = await getTimeSettings(primaryDomain)
+    if (seq !== sitesRenderSeq) return
     if (saved && (saved.cutoff !== null || saved.window)) {
       memory.textContent = `已记忆时间设置：${describeMode(saved.mode)} · ${describeStrategy(saved.strategy)}`
       const reset = document.createElement('button')
@@ -197,25 +232,24 @@ async function renderSites(): Promise<void> {
       li.append(details)
     }
 
-    ul.appendChild(li)
+    rows.push(li)
   }
+
+  // 一次性替换，配合 seq 守卫：并发渲染时后完成者完整覆盖，绝不交错追加
+  $('site-list').replaceChildren(...rows)
 
   const grantAll = $<HTMLButtonElement>('grant-all-btn')
   grantAll.onclick = async () => {
-    await chrome.permissions.request({ origins: SUPPORTED_ORIGINS })
+    const ok = await requestOrigins(SUPPORTED_ORIGINS)
+    if (!ok) return
     void renderSites()
   }
 
   // 平台之外的其他已授权 origin（如 dist-test 预授予条目），有则列出
   const others = [...granted].filter((o) => !SUPPORTED_ORIGINS.includes(o))
   const box = $('other-origins')
-  if (others.length === 0) {
-    box.hidden = true
-    return
-  }
-  box.hidden = false
   const otherUl = $('other-origins-list')
-  otherUl.innerHTML = ''
+  const otherRows: HTMLElement[] = []
   for (const origin of others) {
     const li = document.createElement('li')
     li.className = 'perm-row'
@@ -225,12 +259,14 @@ async function renderSites(): Promise<void> {
     btn.textContent = '移除'
     btn.className = 'remove-btn'
     btn.addEventListener('click', async () => {
-      await chrome.permissions.remove({ origins: [origin] })
+      if (!(await removeOrigins([origin]))) return
       void renderSites()
     })
     li.append(span, btn)
-    otherUl.appendChild(li)
+    otherRows.push(li)
   }
+  box.hidden = others.length === 0
+  otherUl.replaceChildren(...otherRows)
 }
 
 init().catch((err) => console.error('[时光机] options init failed', err))
