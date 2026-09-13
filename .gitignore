@@ -32,3 +32,8 @@ Thumbs.db
 .vscode/
 .workbuddy/
 gui-test-screenshots/
+
+# 会话交接提示词与临时调试产物（本地文件，不入库）
+NEXT-SESSION-PROMPT.md
+.tmp-*.mjs
+.test-out.log

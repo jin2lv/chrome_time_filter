@@ -8,6 +8,7 @@
  * - AdapterManager.loadRemoteFromStorage 加载 storage 远程包
  */
 import { JSDOM } from 'jsdom'
+import { createHash } from 'node:crypto'
 import { compareVersions } from '../../src/adapters'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://xueqiu.com/' })
@@ -87,6 +88,9 @@ let removedListener: ((removed: { origins: string[] }) => void) | null = null
       set: async (items: Record<string, unknown>) => {
         for (const [k, v] of Object.entries(items)) storageMap.set(k, v)
       },
+      remove: async (keys: string | string[]) => {
+        for (const k of Array.isArray(keys) ? keys : [keys]) storageMap.delete(k)
+      },
     },
     onChanged: { addListener: () => {} },
   },
@@ -108,7 +112,7 @@ storageMap.set('prefs', { autoUpdateAdapters: true, commentNoTime: 'show' })
 
 const { updateAdapters } = await import('../../src/background/service-worker')
 const { AdapterManager } = await import('../../src/adapters')
-const { getRemoteAdapter } = await import('../../src/shared/storage')
+const { getRemoteAdapter, setRemoteAdapter } = await import('../../src/shared/storage')
 
 // 构造远程包（比当前内置雪球版本更高一个小版本；内置版本随功能批次演进，此处动态推导）
 const builtinVersion = AdapterManager.getPackageFor('xueqiu.com')?.version ?? '0.0.0'
@@ -131,10 +135,23 @@ const remotePkg = {
 }
 
 // 2a. 远程版本更新 → 更新成功 + 存储写入 + 广播
-;(globalThis as Record<string, unknown>).fetch = async () => ({
-  ok: true,
-  json: async () => remotePkg,
-})
+// 远程拉取为「两次请求」：adapters.json（正文）+ adapters.json.sha256（完整性校验，P2-19）
+const sha256Hex = (text: string): string =>
+  createHash('sha256').update(text, 'utf8').digest('hex')
+
+/** 构造 URL 感知的 fetch mock：.sha256 请求返回校验和（checksum 为空则返回 404） */
+function mockRemote(pkg: unknown, checksum?: string | null): typeof fetch {
+  const text = JSON.stringify(pkg)
+  return (async (url: string) => {
+    if (String(url).endsWith('.sha256')) {
+      if (checksum === null) return { ok: false, status: 404, text: async () => '' }
+      return { ok: true, text: async () => checksum ?? sha256Hex(text) }
+    }
+    return { ok: true, text: async () => text }
+  }) as unknown as typeof fetch
+}
+
+;(globalThis as Record<string, unknown>).fetch = mockRemote(remotePkg)
 let r = await updateAdapters()
 check('新版本 → 更新成功', r.updated === true, JSON.stringify(r))
 const stored = await getRemoteAdapter()
@@ -150,27 +167,67 @@ check('旧远程缓存不覆盖新版内置包', builtinWins?.version === builti
 AdapterManager.setRemoteAdapters([remotePkg])
 
 // 2b. 旧版本 → 跳过
-;(globalThis as Record<string, unknown>).fetch = async () => ({
-  ok: true,
-  json: async () => ({ ...remotePkg, version: '0.1.0' }),
-})
+;(globalThis as Record<string, unknown>).fetch = mockRemote({ ...remotePkg, version: '0.1.0' })
 r = await updateAdapters()
 check('旧版本 → 不更新', r.updated === false && r.reason === 'no-newer', JSON.stringify(r))
 
 // 2c. 非法格式 → 丢弃
-;(globalThis as Record<string, unknown>).fetch = async () => ({
-  ok: true,
-  json: async () => ({ version: '9.9.9', platforms: [{ name: '坏包' }] }), // 缺 post_selectors/timestamp
+;(globalThis as Record<string, unknown>).fetch = mockRemote({
+  version: '9.9.9',
+  platforms: [{ name: '坏包' }], // 缺 post_selectors/timestamp
 })
 r = await updateAdapters()
 check('非法格式 → 丢弃', r.updated === false && r.reason === 'invalid', JSON.stringify(r))
 
 // 2d. 网络失败 → 静默降级
-;(globalThis as Record<string, unknown>).fetch = async () => {
+;(globalThis as Record<string, unknown>).fetch = (async () => {
   throw new Error('network down')
-}
+}) as unknown as typeof fetch
 r = await updateAdapters()
 check('网络失败 → 静默降级', r.updated === false && r.reason === 'network', JSON.stringify(r))
+
+// 2d-2. 完整性校验失败（P2-19）→ 丢弃，不写存储
+const versionBefore = (await getRemoteAdapter())?.version ?? 'none'
+;(globalThis as Record<string, unknown>).fetch = mockRemote(
+  { ...remotePkg, version: bumpMinor(remoteVersion) },
+  'name'.repeat(16), // 长度 64 但内容错误的校验和
+)
+r = await updateAdapters()
+check('校验和不符 → 丢弃', r.updated === false && r.reason === 'checksum', JSON.stringify(r))
+check(
+  '校验和不符 → 存储未被覆盖',
+  ((await getRemoteAdapter())?.version ?? 'none') === versionBefore,
+)
+
+// 2d-3. 校验和文件缺失（.sha256 404）→ 静默降级
+;(globalThis as Record<string, unknown>).fetch = mockRemote(
+  { ...remotePkg, version: bumpMinor(remoteVersion) },
+  null,
+)
+r = await updateAdapters()
+check('校验和文件缺失 → 静默降级', r.updated === false && r.reason === 'network', JSON.stringify(r))
+
+// 2d-4. 应急停用（P2-19）：远程包 disabled → 清空远程包 + 广播回退内置
+sendMessages.length = 0
+;(globalThis as Record<string, unknown>).fetch = mockRemote({
+  ...remotePkg,
+  version: bumpMinor(remoteVersion),
+  disabled: true,
+})
+r = await updateAdapters()
+check('disabled 远程包 → 应急停用', r.updated === false && r.reason === 'kill-switch', JSON.stringify(r))
+check('应急停用 → 存储中的远程包被清空', (await getRemoteAdapter()) === null)
+check(
+  '应急停用 → 广播 ADAPTERS_UPDATED 让客户端回退内置',
+  sendMessages.some((m) => (m as { type?: string }).type === 'ADAPTERS_UPDATED'),
+)
+check(
+  '应急停用 → AdapterManager 回退内置包',
+  AdapterManager.getPackageFor('xueqiu.com')?.version === builtinVersion,
+)
+// 恢复：重新装载远程包供后续用例
+AdapterManager.setRemoteAdapters([remotePkg])
+await setRemoteAdapter(remotePkg as never)
 
 // 2e. 开关关闭 → 跳过
 storageMap.set('prefs', { autoUpdateAdapters: false, commentNoTime: 'show' })

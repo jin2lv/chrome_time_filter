@@ -10,13 +10,30 @@
 import type { TimeSettings } from '../shared/types'
 import { AdapterManager, compareVersions } from '../adapters'
 import { validateAdapter } from '../adapters/schema'
-import { extractDomain, getPrefs, getRemoteAdapter, setRemoteAdapter } from '../shared/storage'
+import {
+  clearRemoteAdapter,
+  extractDomain,
+  getPrefs,
+  getRemoteAdapter,
+  setRemoteAdapter,
+} from '../shared/storage'
 import type { Adapter } from '../shared/types'
 
 const TIME_SETTINGS_PREFIX = 'timeSettings.'
 
-/** 远程适配包地址（P2-5：发布时替换为真实 repo；拉取失败静默降级内置包） */
-const REMOTE_ADAPTERS_URL = 'https://cdn.jsdelivr.net/gh/org/repo@latest/adapters.json'
+/**
+ * 远程适配包地址（P2-19 真实发布源）
+ *
+ * 发布流程：`npm run adapters:build`（生成 adapters.json + adapters.json.sha256）→
+ * 提交并推送到 main → 可选调用 jsDelivr purge 清除 CDN 缓存（分支引用默认缓存约 12h）：
+ * `https://purge.jsdelivr.net/gh/jin2lv/chrome_time_filter@main/adapters.json`
+ *
+ * 完整性校验：随包发布的 `.sha256` 文件先于解析比对（防传输损坏/被替换；不防发布源被完全劫持，
+ * 该威胁模型下依赖 GitHub 账号安全 + HTTPS）。
+ */
+const REMOTE_ADAPTERS_URL =
+  'https://cdn.jsdelivr.net/gh/jin2lv/chrome_time_filter@main/adapters.json'
+const REMOTE_CHECKSUM_URL = `${REMOTE_ADAPTERS_URL}.sha256`
 
 const ADAPTERS_ALARM = 'adapters-update'
 const ADAPTERS_INTERVAL_MINUTES = 12 * 60 // 每 12h
@@ -110,11 +127,29 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 chrome.runtime.onStartup.addListener(ensureContentScriptRegistered)
 void ensureContentScriptRegistered()
 
-/* ---- P2-5：适配包热更新 ---- */
+/* ---- P2-5 热更新 / P2-19 发布源安全 ---- */
+
+/** SHA-256（hex）：完整性校验用（P2-19） */
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** 广播 ADAPTERS_UPDATED：让已注入的 content script 重新加载适配包 */
+async function broadcastAdaptersUpdated(): Promise<void> {
+  const tabs = await chrome.tabs.query({})
+  for (const tab of tabs) {
+    if (!tab.id || !tab.url || !tab.url.startsWith('http')) continue
+    chrome.tabs.sendMessage(tab.id, { type: 'ADAPTERS_UPDATED' }).catch(() => {})
+  }
+}
 
 /**
- * 拉取远程适配包：校验 → 版本对比 → 更新存储并生效。
- * 任何失败（网络/格式/校验）均静默降级，继续使用内置兜底包。
+ * 拉取远程适配包：完整性校验 → 应急停用 → 校验 → 版本对比 → 更新存储并生效。
+ * 任何失败（网络/校验和不符/格式）均静默降级，继续使用内置兜底包。
+ *
+ * 版本回退策略（P2-19）：版本单调（不接受降级）；需要回退时由发布方**递增版本号并发布旧内容**
+ * （roll-forward），或对远程包置 `disabled: true` 走应急停用；最终兜底为清空远程包回退内置包。
  */
 export async function updateAdapters(): Promise<{ updated: boolean; reason?: string }> {
   const prefs = await getPrefs()
@@ -122,12 +157,34 @@ export async function updateAdapters(): Promise<{ updated: boolean; reason?: str
   try {
     const res = await fetch(REMOTE_ADAPTERS_URL, { signal: AbortSignal.timeout(15000) })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const pkg = (await res.json()) as Adapter
+    const text = await res.text()
+
+    // 完整性校验：随包发布的 .sha256 先于解析比对
+    const checkRes = await fetch(REMOTE_CHECKSUM_URL, { signal: AbortSignal.timeout(15000) })
+    if (!checkRes.ok) throw new Error(`HTTP ${checkRes.status} (checksum)`)
+    const expected = (await checkRes.text()).trim().toLowerCase().split(/\s+/)[0]
+    const actual = await sha256Hex(text)
+    if (!/^[0-9a-f]{64}$/.test(expected) || expected !== actual) {
+      console.warn('[时光机] 远程适配包完整性校验失败，丢弃')
+      return { updated: false, reason: 'checksum' }
+    }
+
+    const pkg = JSON.parse(text) as Adapter
     const errs = validateAdapter(pkg)
     if (errs) {
       console.warn('[时光机] 远程适配包校验失败，丢弃:', errs)
       return { updated: false, reason: 'invalid' }
     }
+
+    // 应急停用（P2-19）：发布方置 disabled 时清空远程包，全体回退内置包
+    if (pkg.disabled === true) {
+      await clearRemoteAdapter()
+      AdapterManager.setRemoteAdapters([])
+      await broadcastAdaptersUpdated()
+      console.warn('[时光机] 远程适配包已停用，回退内置包')
+      return { updated: false, reason: 'kill-switch' }
+    }
+
     const local = await getRemoteAdapter()
     const localVersion = local?.version ?? '0.0.0'
     if (compareVersions(pkg.version, localVersion) <= 0) {
@@ -135,12 +192,7 @@ export async function updateAdapters(): Promise<{ updated: boolean; reason?: str
     }
     await setRemoteAdapter(pkg)
     AdapterManager.setRemoteAdapters([pkg])
-    // 广播给所有已注入的 content script 重新加载适配包
-    const tabs = await chrome.tabs.query({})
-    for (const tab of tabs) {
-      if (!tab.id || !tab.url || !tab.url.startsWith('http')) continue
-      chrome.tabs.sendMessage(tab.id, { type: 'ADAPTERS_UPDATED' }).catch(() => {})
-    }
+    await broadcastAdaptersUpdated()
     console.log(`[时光机] 适配包已更新至 v${pkg.version}`)
     return { updated: true }
   } catch (e) {

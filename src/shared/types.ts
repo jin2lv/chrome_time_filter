@@ -33,6 +33,11 @@ export interface RelativePattern {
 export interface Adapter {
   /** 适配包格式版本 */
   version: string
+  /**
+   * 应急停用开关（P2-19，可选）：远程包置 true 时，客户端清空远程包并回退内置包。
+   * 仅远程发布源使用；内置包不使用该字段。
+   */
+  disabled?: boolean
   platforms: PlatformAdapter[]
 }
 

@@ -19,6 +19,10 @@ export function validateAdapter(pkg: unknown): string[] | null {
   if (typeof p.version !== 'string' || !p.version) {
     errors.push('缺少 version（字符串）')
   }
+  // disabled（可选，P2-19 应急停用）：仅允许布尔
+  if (p.disabled !== undefined && typeof p.disabled !== 'boolean') {
+    errors.push('disabled 必须是布尔值')
+  }
   if (!Array.isArray(p.platforms) || p.platforms.length === 0) {
     errors.push('platforms 必须是非空数组')
     return errors

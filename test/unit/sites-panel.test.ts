@@ -9,6 +9,10 @@
  * - schema：last_verified 合法值通过、非法格式拒绝；全部内置适配包仍过校验（含新字段）
  */
 import assert from 'node:assert'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { SUPPORTED_ORIGINS, SUPPORTED_SITES } from '../../src/adapters'
 import { validateAdapter } from '../../src/adapters/schema'
 import xueqiuAdapter from '../../src/adapters/xueqiu.json'
@@ -17,6 +21,7 @@ import jisiluAdapter from '../../src/adapters/jisilu.json'
 import eastmoneyNewsAdapter from '../../src/adapters/eastmoney-news.json'
 
 let pass = 0
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 function check(name: string, cond: boolean, detail = ''): void {
   if (cond) {
     pass++
@@ -113,6 +118,25 @@ for (const [name, pkg] of [
   const errs = validateAdapter(pkg)
   check(`${name}适配包仍过校验`, errs === null, JSON.stringify(errs))
 }
+
+// ---------- 4. 远程发布产物（P2-19）：adapters.json 与 .sha256 必须一致且可校验 ----------
+const releaseJson = readFileSync(join(repoRoot, 'adapters.json'))
+const releasePkg = JSON.parse(releaseJson.toString('utf8'))
+check('adapters.json 通过 schema 校验', validateAdapter(releasePkg) === null, JSON.stringify(validateAdapter(releasePkg)))
+check(
+  'adapters.json 覆盖全部 4 个内置平台',
+  releasePkg.platforms.length === SUPPORTED_SITES.length,
+  `${releasePkg.platforms.length} vs ${SUPPORTED_SITES.length}`,
+)
+check(
+  'adapters.json 平台与内置包同源（域名集合一致）',
+  JSON.stringify(releasePkg.platforms.map((p: { domains: string[] }) => p.domains).flat().sort()) ===
+    JSON.stringify(SUPPORTED_SITES.map((s) => s.domains).flat().sort()),
+)
+const declaredSum = readFileSync(join(repoRoot, 'adapters.json.sha256'), 'utf8').trim()
+const actualSum = createHash('sha256').update(releaseJson).digest('hex')
+check('adapters.json.sha256 与文件内容一致（客户端校验依据）', declaredSum === actualSum, `${declaredSum} vs ${actualSum}`)
+check('disabled 字段可省略（内置包不含）', releasePkg.disabled === undefined)
 
 console.log(`\n站点能力矩阵测试完成: ${pass} 项通过`)
 if (process.exitCode === 1) process.exit(1)

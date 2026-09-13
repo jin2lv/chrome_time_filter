@@ -1,5 +1,32 @@
 # TimeMachine 时光机 — 开发计划与验证清单
 
+## 2026-09-09 批次九（P2-19 真实发布源 + 完整性校验 + 应急停用）
+
+> 用户确认方案 A（GitHub 公开仓库 `jin2lv/chrome_time_filter` + jsDelivr），据此接通真实发布源。基线全绿：`npm test` 16 文件（adapters-update 25 项、sites-panel 33 项）、tsc 0 错误、build/test:build ✅。
+
+### 本批落地
+
+- **真实发布源**：`REMOTE_ADAPTERS_URL` = `https://cdn.jsdelivr.net/gh/jin2lv/chrome_time_filter@main/adapters.json`（替换 org/repo 占位）；`.sha256` 兄弟文件同源。
+- **完整性校验**：拉取后先比对 `adapters.json.sha256`（SHA-256 hex，crypto.subtle）再 JSON.parse；不匹配 → reason `checksum` 丢弃（**威胁模型如实说明**：防传输损坏/CDN 内容错误，不防发布源被整体劫持——后者依赖 GitHub 账号安全与 HTTPS）。
+- **应急停用**：远程包 `disabled: true` → 清空存储远程包 + `AdapterManager.setRemoteAdapters([])` + 广播，全体回退内置包；检测置于版本比较之前（低版本 payload 同样能停用）。schema 允许 `disabled` 布尔（可选）。
+- **版本回退策略**：版本单调（不接受降级）；回退 = 递增版本号发布旧内容（roll-forward）+ 应急停用 + 内置兜底三层。
+- **发布产物生成**（防漂移）：`scripts/build-adapters-json.mjs` 从 `src/adapters/*.json` 合并生成 `adapters.json` + `.sha256`（域名重复即报错）；npm script `adapters:build`；`sites-panel.test.ts` 增加发布产物一致性断言（schema、平台同源、校验和与实际文件一致）。
+- **发布流程**（写入 service-worker 头注 + 隐私政策同步）：改内置包 → `npm run adapters:build -- --version x.y.z` → 提交推送 → 可选 purge CDN（`https://purge.jsdelivr.net/gh/jin2lv/chrome_time_filter@main/adapters.json`，分支引用默认缓存约 12h）。
+- **测试**：adapters-update.test.ts 增加 URL 感知 fetch mock + 7 项新断言（校验和不符×2、校验和文件缺失、应急停用×4）。
+
+### 仓库与授权（本批附带）
+
+- 本地分支 `master` → `main`；25 个提交的作者/提交者邮箱统一改写为 `207950681+jin2lv@users.noreply.github.com`（用户在公开前选择不暴露真实邮箱），并清理 `refs/original` 与 reflog 旧对象。
+- 推送方式：SSH（`git@github.com:jin2lv/chrome_time_filter.git`）——本机 GCM 为 2019 年的 1.19，对 GitHub 兼容性不可靠；已将既有 ed25519 公钥注册到账号，推送免密。
+- 已推送：`main` 分支 25 提交 + `adapters.json`（v1.0.0，4 平台）+ `.sha256`。
+
+### 遗留（如实记录）
+
+- §11 真机链路验证（安装时拉取/远程版本更高→存储更新+重载/开关关闭不请求）需在发布源有更高版本时做一次真机观察；jsDelivr 首次缓存新仓库文件有数分钟延迟。
+- 「热更新后自动运行轻量健康检查」（P2-19 第 3 项后半）未实现：当前为 schema + 校验和 + 版本单调；页面级选择器健康检查归 P2-22。
+
+---
+
 ## 下一会话排期（批次 E，2026-09-09 收盘时登记）
 
 1. **雪球全量真机回归**（独立低频会话，覆盖今日开发）：P2-17 切片 1 补拉（§5.6 抽检）+ 首页区间 7 类抽检（§5.1）+ 个股页回归 + **P2-20 授权弹窗链路**（单站授权/拒绝路径/授权全部 5 origin 弹窗形态，§2.1-2.5 商店包或 dist-test 均可）+ **P2-18 新区间预设过滤行为**（午间复盘/交易时段/交易日全天在雪球页的实际过滤）。
@@ -701,12 +728,13 @@
 
 ### P2-19: 完整诊断、适配健康与更新安全
 - [ ] 诊断报告包含平台、页面 URL/类型、类别、原始时间文本、回退行为、适配包版本和扫描状态
-  - [x] 部分完成（2026-08-18）：Popup 复制脱敏报告已含平台/适配包版本/模式边界/计数与逐条 {kind, page, context, raw, 回退行为}；扫描状态尚未纳入
+  - [x] 部分完成（2026-08-18）：Popup 复制脱敏报告已含平台/适配包版本/模式边界/计数与逐条 {kind, page, context, raw, 回退行为}；扫描状态尚未纳入（切片 2 一并做）
 - [ ] 报告复制前脱敏，不包含帖子正文、账号、Cookie 或登录数据；全部本地生成，不上传
   - [x] 部分完成（2026-08-18）：复制报告仅含 pathname 与时间原文（PRD F8），本地生成不上传；诊断明细页的完整脱敏校验仍缺
 - [ ] 每个页面类型提供 DOM fixture、解析率/匹配数检查、评论/分页专项测试和真实 Chrome 冒烟测试
 - [ ] 热更新后自动运行轻量健康检查；失败保持上一可用版本并允许手动回退
-- [ ] 将占位远程地址替换为真实发布源，增加完整性校验、版本回退和应急停用策略
+  - ◐ 2026-09-09 批次九：远程包经 schema + SHA-256 完整性校验，版本单调（失败保持上一可用/内置包）；页面级健康检查（解析率/匹配数）归 P2-22
+- [x] 将占位远程地址替换为真实发布源，增加完整性校验、版本回退和应急停用策略（2026-09-09 批次九：真实 jsDelivr 源 + SHA-256 校验 + 三层回退（roll-forward/应急停用/内置兜底）+ `disabled` 应急停用；发布产物由脚本生成防漂移；§11 真机链路待发布源有更高版本时观察）
 
 ### P2-20: 多站授权与每站设置
 - [x] 设置页列出全部支持站点及授权状态，支持单站授权和撤销（2026-09-09 批次七：支持站点矩阵，4 平台行含状态标签与单站授权/移除；授权弹窗真机验证攒到批次 E，机制同批次六 §2.4/§2.5 已闭环）

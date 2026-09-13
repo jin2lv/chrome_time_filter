@@ -85,6 +85,11 @@ export async function setRemoteAdapter(pkg: Adapter): Promise<void> {
   await chrome.storage.local.set({ [REMOTE_ADAPTER_KEY]: entry })
 }
 
+/** 清空远程适配包（P2-19 应急停用：发布方置 disabled 时回退内置包） */
+export async function clearRemoteAdapter(): Promise<void> {
+  await chrome.storage.local.remove(REMOTE_ADAPTER_KEY)
+}
+
 /** 域名辅助：从 location.hostname 提取规范化域名（如 xueqiu.com） */
 export function extractDomain(hostname: string): string {
   return hostname.replace(/^www\./, '')

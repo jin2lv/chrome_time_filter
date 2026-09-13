@@ -11,7 +11,8 @@
     "test": "tsx test/unit/time.test.ts && tsx test/unit/content.test.ts && tsx test/unit/content-interval.test.ts && tsx test/unit/feed-backfill.test.ts && tsx test/unit/window-content.test.ts && tsx test/unit/mismatch.test.ts && tsx test/unit/ths.test.ts && tsx test/unit/adapters-update.test.ts && tsx test/unit/popup-auth.test.ts && tsx test/unit/popup-window.test.ts && tsx test/unit/xueqiu-adapter.test.ts && tsx test/unit/xueqiu-backfill.test.ts && tsx test/unit/xueqiu-category.test.ts && tsx test/unit/xueqiu-home-context.test.ts && tsx test/unit/sites-panel.test.ts && tsx test/unit/trading-day.test.ts",
     "test:build": "node scripts/make-test-build.mjs && node scripts/check-build-loader.mjs dist-test",
     "check:build-loader": "node scripts/check-build-loader.mjs",
-    "package": "node scripts/package-extension.mjs"
+    "package": "node scripts/package-extension.mjs",
+    "adapters:build": "node scripts/build-adapters-json.mjs"
   },
   "dependencies": {
     "dayjs": "^1.11.13",

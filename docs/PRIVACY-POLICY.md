@@ -37,9 +37,12 @@
 
 为了在低维护成本下应对平台改版，时光机会**每隔 12 小时**（以及安装时）从公开静态托管拉取最新的适配包配置：
 
-- 来源：公开的 GitHub Releases，经 jsDelivr CDN 加速；
+- 来源：本扩展的公开 GitHub 仓库 `github.com/jin2lv/chrome_time_filter` 中的 `adapters.json`，
+  经 jsDelivr CDN 加速（`cdn.jsdelivr.net/gh/jin2lv/chrome_time_filter@main/adapters.json`）；
 - 内容：仅为平台的选择器与时间解析规则（JSON 配置），**不含任何用户标识**；
+- 完整性校验：随包发布的 `adapters.json.sha256` 会在解析前比对（SHA-256），不匹配即丢弃；
 - 失败处理：拉取失败或校验不通过时**静默降级**到内置兜底版本，不弹警告、不上报；
+- 应急停用：发布方可置 `disabled` 使所有客户端回退内置包；
 - 可关闭：你可以在设置页关闭「适配包自动更新」，此后仅使用内置适配包。
 
 该请求不携带你的身份、浏览历史或任何可识别信息。
