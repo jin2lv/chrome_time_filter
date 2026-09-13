@@ -37,3 +37,6 @@ gui-test-screenshots/
 NEXT-SESSION-PROMPT.md
 .tmp-*.mjs
 .test-out.log
+
+# 本地工具目录（Kilo 插件状态与依赖，不入库）
+.kilo/
