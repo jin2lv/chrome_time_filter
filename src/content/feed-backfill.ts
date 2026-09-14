@@ -10,7 +10,11 @@
  * - 手动触发，不自动滚动：仅适配包声明为严格时间排序的上下文（backfill.contexts 白名单）
  *   才挂载入口；热度/智能流保持「仅过滤已加载内容」标注，不做不可信回溯。
  * - 与虚拟分页互斥：调用方（content/index.ts）保证 feed 页不会同时激活两者。
- * - 与虚拟分页共享统一状态契约：ScanProgress（unit: 'screens'）→ Popup/悬浮条按单位渲染。
+ * - 与虚拟分页共享统一状态契约：ScanProgress（unit: 'screens'）→ Popup/悬浮条按单位渲染；
+ *   文案统一由 shared/scan-text.ts 提供（切片 2）。
+ * - 获取策略（切片 2）：优先滚动追加；滚动无新增且适配包声明 load_more_selector 时，
+ *   自动点击「加载更多」继续拉取（雪球实测滚动 2-3 屏后切换为按钮式）；按钮拉取同样
+ *   计入 max_screens 上限（一次用户可见的拉取 = 1 屏）；按钮缺失/禁用时维持「无新增计停滞」语义。
  * - 修改前先读懂 content/index.ts 的 reapplyAll/stopFiltering 对本控制器的生命周期管理。
  */
 import type { FeedBackfillConfig, ScanProgress } from '../shared/types'
@@ -175,15 +179,26 @@ export class FeedBackfillController {
       await sleep(this.config.scroll_delay_ms)
       if (this.destroyed || run !== this.runId) return
 
-      let hits = 0
-      let addedCount = 0
-      for (const post of this.currentPosts()) {
-        if (before.has(post)) continue
-        addedCount++
-        // 判定仅用于命中统计；过滤/隐藏由既有 observer 链负责，避免双计数
-        if (this.decide(post) === 'include') hits++
-      }
+      let { hits, addedCount } = this.diffSince(before)
       this.foundHits += hits
+
+      // 滚动无新增时尝试「加载更多」按钮式获取（切片 2，数据驱动；未声明则维持原语义）
+      if (addedCount === 0 && this.canLoadMore()) {
+        if (this.screens >= this.config.max_screens) {
+          this.setState('limit')
+          return
+        }
+        this.clickLoadMore()
+        this.screens++
+        this.emitProgress()
+        await sleep(this.config.scroll_delay_ms)
+        if (this.destroyed || run !== this.runId) return
+        const afterClick = this.diffSince(before)
+        hits = afterClick.hits
+        addedCount = afterClick.addedCount
+        this.foundHits += hits
+      }
+
       if (addedCount === 0) {
         stalls++
         if (stalls >= stallLimit) {
@@ -200,5 +215,35 @@ export class FeedBackfillController {
         return
       }
     }
+  }
+
+  /** 统计相对快照的新增帖子与其中符合时间条件的数量（判定仅用于命中统计，过滤由 observer 链负责） */
+  private diffSince(before: Set<HTMLElement>): { hits: number; addedCount: number } {
+    let hits = 0
+    let addedCount = 0
+    for (const post of this.currentPosts()) {
+      if (before.has(post)) continue
+      addedCount++
+      if (this.decide(post) === 'include') hits++
+    }
+    return { hits, addedCount }
+  }
+
+  /** 「加载更多」按钮是否可点击（存在、可见、未禁用） */
+  private canLoadMore(): boolean {
+    const selector = this.config.load_more_selector
+    if (!selector) return false
+    const el = document.querySelector<HTMLElement>(selector)
+    if (!el) return false
+    if (el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true') return false
+    const view = el.ownerDocument.defaultView
+    const style = view?.getComputedStyle(el)
+    if (style && (style.display === 'none' || style.visibility === 'hidden')) return false
+    return typeof (el as HTMLButtonElement).click === 'function' || el.tagName === 'A'
+  }
+
+  private clickLoadMore(): void {
+    const el = document.querySelector<HTMLElement>(this.config.load_more_selector ?? '')
+    el?.click()
   }
 }

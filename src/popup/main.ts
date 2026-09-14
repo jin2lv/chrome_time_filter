@@ -10,6 +10,7 @@
  */
 import { AdapterManager } from '../adapters'
 import { extractDomain, getPrefs, getTimeSettings, setTimeSettings } from '../shared/storage'
+import { scanDiagnosticLine, scanStatusText } from '../shared/scan-text'
 import { lastTradingDayRange, lunchReviewRange, tradingSessionRange } from '../shared/trading'
 import type { ContentState, PlatformAdapter, TimeSettings } from '../shared/types'
 import { createIcons, Settings } from 'lucide'
@@ -295,7 +296,7 @@ function bindEvents(): void {
   copyDiagnosticsBtn.addEventListener('click', () => void copyDiagnostics())
 }
 
-/** 复制脱敏诊断报告：仅平台/适配包版本、模式边界、计数与逐条 {kind, page, context, raw, 回退行为} */
+/** 复制脱敏诊断报告：仅平台/适配包版本、模式边界、扫描状态、计数与逐条 {kind, page, context, raw, 回退行为} */
 function fmtBoundaryTs(ts: number | null | undefined): string {
   return ts == null ? '-' : new Date(ts).toLocaleString()
 }
@@ -305,9 +306,11 @@ function copyDiagnostics(): void {
   const boundary = settings?.mode === 'window'
     ? `窗口 ${fmtBoundaryTs(settings.window?.start)} .. ${fmtBoundaryTs(settings.window?.end)}`
     : `截止 ${fmtBoundaryTs(settings?.cutoff)}`
+  const scanLine = scanDiagnosticLine(state.scan)
   const lines = [
     `时光机诊断报告 | 平台=${adapter?.name ?? '未知'} | 适配包内置版本=${adapterVersion}`,
     `模式=${settings?.mode ?? '未设定'} | 边界=${boundary}`,
+    ...(scanLine ? [scanLine] : []),
     `已过滤 ${state.filteredCount} 条 | ${state.unparseableCount} 条无法解析`,
     ...state.diagnostics.map(
       (item) =>
@@ -504,24 +507,6 @@ function render(): void {
   scopeStatus.textContent = loadedOnly
     ? `${state.context ? `${state.context}：` : ''}当前类别为智能或热度信息流，仅过滤已加载内容，结果不代表完整时间范围。`
     : scanMessage
-}
-
-function scanStatusText(scan: NonNullable<ContentState['scan']>): string {
-  const { state, scannedPages: scanned, maxPages: max, unit } = scan
-  // 原生页码扫描（个股页）按「原生页面」计数；信息流滚动补拉按「屏」计数（P2-17 切片 1）
-  if (unit === 'screens') {
-    if (state === 'loading') return `正在查找更早的帖子，已加载 ${scanned} 屏。`
-    if (state === 'exhausted') return `已加载 ${scanned} 屏，到达信息流末页。`
-    if (state === 'limit') return `已加载 ${scanned} 屏，达到 ${max} 屏安全上限。`
-    if (state === 'cancelled') return `补拉已取消，已加载 ${scanned} 屏。`
-    return scanned > 0 ? `已加载 ${scanned} 屏。` : ''
-  }
-  if (state === 'loading') return `正在跨页查找，已扫描 ${scanned} 个原生页面。`
-  if (state === 'exhausted') return `已扫描 ${scanned} 个原生页面，并到达网站末页。`
-  if (state === 'limit') return `已扫描 ${scanned} 个原生页面，达到 ${max} 页安全上限。`
-  if (state === 'cancelled') return `扫描已取消，已扫描 ${scanned} 个原生页面。`
-  if (state === 'error') return `原生页面加载失败，结果可能不完整；已扫描 ${scanned} 页。`
-  return scanned > 0 ? `已扫描 ${scanned} 个原生页面。` : ''
 }
 
 function setTimeControlsDisabled(disabled: boolean): void {

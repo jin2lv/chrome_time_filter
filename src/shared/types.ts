@@ -184,6 +184,14 @@ export interface FeedBackfillConfig {
   target_hits: number
   /** 连续多少次滚动无新增内容判定为末页（缺省 2） */
   end_stall_count?: number
+  /**
+   * 「加载更多」按钮选择器（P2-17 切片 2，可选）
+   *
+   * 站点在滚动追加若干屏后会切换为按钮式加载（雪球真机实测 2-3 屏后出现）。
+   * 声明后：滚动无新增时先尝试点击该按钮继续拉取；未声明则维持原有「无新增即计停滞」语义。
+   * 每次按钮拉取同样计入 max_screens 上限（一次用户可见的拉取 = 1 屏）。
+   */
+  load_more_selector?: string
 }
 
 export interface TimeDiagnostic {

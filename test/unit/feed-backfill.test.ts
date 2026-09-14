@@ -183,7 +183,136 @@ const appendPosts = (specs: Array<{ expect: string }>): Array<{ id: string; expe
   console.log('✅ 取消与恢复：cancelled 后停止滚动、可再次启动')
 }
 
-// ---------- 6. schema 校验：非法 backfill 配置 ----------
+// ---------- 7. 「加载更多」按钮式获取（切片 2） ----------
+{
+  // 7a. 滚动无新增 + 按钮可用 → 点击按钮继续拉取、命中计入
+  scrollCount = 0
+  nextId = 1
+  let last: ScanProgress | null = null
+  let clicks = 0
+  const button = document.createElement('button')
+  button.className = 'tm-load-more'
+  button.textContent = '加载更多'
+  button.addEventListener('click', () => {
+    clicks++
+    loadBehavior = () => appendPosts([{ expect: 'include' }])
+  })
+  document.body.appendChild(button)
+  loadBehavior = () => [] // 滚动不再追加 → 依赖按钮
+  const controller = makeController(
+    {
+      contexts: ['7x24'],
+      scroll_delay_ms: 15,
+      max_screens: 6,
+      target_hits: 2,
+      load_more_selector: '.tm-load-more',
+    },
+    (p) => { last = p },
+  )
+  controller.start()
+  await until(() => last!.state === 'idle')
+  assert.ok(clicks >= 1, `应点击「加载更多」至少一次，实际 ${clicks}`)
+  assert.ok(
+    document.querySelector('.tm-backfill-status')!.textContent!.includes('已找到 2 条'),
+    '按钮式拉取的命中应计入统计',
+  )
+  controller.destroy()
+  button.remove()
+  console.log('✅ 按钮式补拉：滚动无新增时点击「加载更多」继续拉取并计入命中')
+}
+{
+  // 7b. 声明了选择器但按钮不存在 → 维持「无新增计停滞」原语义（exhausted）
+  scrollCount = 0
+  nextId = 1
+  let last: ScanProgress | null = null
+  loadBehavior = () => []
+  const controller = makeController(
+    {
+      contexts: ['7x24'],
+      scroll_delay_ms: 15,
+      max_screens: 5,
+      target_hits: 1,
+      end_stall_count: 2,
+      load_more_selector: '.tm-no-such-button',
+    },
+    (p) => { last = p },
+  )
+  controller.start()
+  await until(() => last!.state === 'exhausted')
+  assert.equal(last!.scannedPages, 2, '按钮缺失时仍按原语义（2 次无新增）判末页')
+  controller.destroy()
+  console.log('✅ 按钮缺失：选择器声明但元素不存在 → 维持原末页语义')
+}
+{
+  // 7c. 按钮禁用 → 不点击、按停滞判末页
+  scrollCount = 0
+  nextId = 1
+  let last: ScanProgress | null = null
+  let clicks = 0
+  const disabledButton = document.createElement('button')
+  disabledButton.className = 'tm-load-more-disabled'
+  disabledButton.setAttribute('disabled', '')
+  disabledButton.addEventListener('click', () => { clicks++ })
+  document.body.appendChild(disabledButton)
+  loadBehavior = () => []
+  const controller = makeController(
+    {
+      contexts: ['7x24'],
+      scroll_delay_ms: 15,
+      max_screens: 5,
+      target_hits: 1,
+      end_stall_count: 2,
+      load_more_selector: '.tm-load-more-disabled',
+    },
+    (p) => { last = p },
+  )
+  controller.start()
+  await until(() => last!.state === 'exhausted')
+  assert.equal(clicks, 0, '禁用按钮不应被点击')
+  controller.destroy()
+  disabledButton.remove()
+  console.log('✅ 按钮禁用：不点击、按无新增判末页')
+}
+{
+  // 7d. 按钮拉取计入 max_screens 上限
+  scrollCount = 0
+  nextId = 1
+  let last: ScanProgress | null = null
+  let clicks = 0
+  const button = document.createElement('button')
+  button.className = 'tm-load-more-limit'
+  button.addEventListener('click', () => {
+    clicks++
+    for (const item of appendPosts([{ expect: 'filtered' }])) {
+      const el = document.createElement('article')
+      el.className = 'timeline__item'
+      el.dataset.expect = item.expect
+      el.innerHTML = `<a class="date-and-source" data-id="${item.id}">帖子 ${item.id}</a>`
+      document.body.appendChild(el)
+    }
+  })
+  document.body.appendChild(button)
+  loadBehavior = () => [] // 只有按钮能拉到内容（且均为窗口外）
+  const controller = makeController(
+    {
+      contexts: ['7x24'],
+      scroll_delay_ms: 15,
+      max_screens: 3,
+      target_hits: 99,
+      load_more_selector: '.tm-load-more-limit',
+    },
+    (p) => { last = p },
+  )
+  controller.start()
+  await until(() => last!.state === 'limit')
+  assert.equal(last!.scannedPages, 3, '按钮拉取同样计入屏数上限')
+  assert.ok(clicks >= 1 && clicks <= 3, `按钮点击次数应被上限约束，实际 ${clicks}`)
+  controller.destroy()
+  button.remove()
+  console.log('✅ 按钮式拉取计入 max_screens 上限')
+}
+
+// ---------- 8. schema 校验：非法 backfill 配置 ----------
 {
   const base = {
     version: '1.0.0',
@@ -223,6 +352,21 @@ const appendPosts = (specs: Array<{ expect: string }>): Array<{ id: string; expe
   assert.ok(invalid((b) => { b.max_screens = 0 })?.join().includes('max_screens'), '0 上限应报错')
   assert.ok(invalid((b) => { b.target_hits = 1.5 })?.join().includes('target_hits'), '非整数 target 应报错')
   assert.ok(invalid((b) => { b.end_stall_count = 0 })?.join().includes('end_stall_count'), '0 stall 应报错')
+  assert.ok(
+    invalid((b) => { b.load_more_selector = '' })?.join().includes('load_more_selector'),
+    '空 load_more_selector 应报错',
+  )
+  assert.equal(
+    validateAdapter(
+      (() => {
+        const pkg = JSON.parse(JSON.stringify(base))
+        ;(pkg.platforms[0].feed_context.backfill as Record<string, unknown>).load_more_selector = '.load-more'
+        return pkg
+      })(),
+    ),
+    null,
+    '合法 load_more_selector 应通过校验',
+  )
   console.log('✅ schema 校验：非法 backfill 配置被拒绝')
 }
 

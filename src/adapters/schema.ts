@@ -214,6 +214,13 @@ function validatePlatform(pl: PlatformAdapter): string[] {
           ) {
             errs.push('feed_context.backfill.end_stall_count 必须是正整数')
           }
+          // load_more_selector（可选，切片 2）：按钮式加载选择器
+          if (
+            backfill.load_more_selector !== undefined &&
+            (typeof backfill.load_more_selector !== 'string' || !backfill.load_more_selector)
+          ) {
+            errs.push('feed_context.backfill.load_more_selector 必须是非空字符串')
+          }
         }
       }
     }
