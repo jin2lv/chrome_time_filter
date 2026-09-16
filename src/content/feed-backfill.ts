@@ -18,9 +18,10 @@
  *   真机取证（2026-09-16）修正：雪球首页 7x24 与关注流均由滚动触发无限加载，
  *   `a.home__timeline__more` 在补拉全程为 display:none，未观测到「滚动转按钮式」；
  *   该选择器按防御性配置声明（可见性门控，不可见时不会点击），按钮式路径待其他平台样本验证。
- * - 已知限制（真机 2026-09-16）：窗口已处于文档底部时 `scrollTo(bottom)` 为空操作，
- *   站点不再懒加载新行 → 连续 end_stall_count 屏后可能误判「已到信息流末页」；
- *   重置为 idle 需重挂载（切换类目/改设置）。后续按 P2-21 统一策略时一并处理。
+ * - 已在底部的重复触发（真机 2026-09-16 缺陷，已修）：窗口已处于文档底部时
+ *   `scrollTo(bottom)` 为空操作，站点不再懒加载新行 → 连续 end_stall_count 屏被误判为
+ *   「已到信息流末页」（且 exhausted 后按钮禁用）。修法见 scrollToFeedEnd()：
+ *   已到底则先回退一屏、间隔一拍再滚到底，重新触发站点懒加载。**真机复验待下一设备会话**。
  * - 修改前先读懂 content/index.ts 的 reapplyAll/stopFiltering 对本控制器的生命周期管理。
  */
 import type { FeedBackfillConfig, ScanProgress } from '../shared/types'
@@ -38,6 +39,11 @@ export interface FeedBackfillOptions {
 type BackfillState = 'idle' | 'loading' | 'exhausted' | 'limit' | 'cancelled'
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** 判定「已处于文档底部」的容差（px） */
+const BOTTOM_EPSILON = 2
+/** 已在底部时「回退一屏 → 回到底」之间的间隔上限；实际取 min(该值, scroll_delay_ms) */
+const REARM_DELAY_MS = 250
 
 export class FeedBackfillController {
   private readonly config: FeedBackfillConfig
@@ -179,7 +185,8 @@ export class FeedBackfillController {
         return
       }
       const before = this.currentPosts()
-      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' })
+      await this.scrollToFeedEnd()
+      if (this.destroyed || run !== this.runId) return
       this.screens++
       this.emitProgress()
       await sleep(this.config.scroll_delay_ms)
@@ -221,6 +228,26 @@ export class FeedBackfillController {
         return
       }
     }
+  }
+
+  /**
+   * 滚到信息流末端，触发站点加载更多。
+   *
+   * 真机缺陷（2026-09-16）：窗口已处于文档底部时 `scrollTo(bottom)` 是空操作，
+   * 站点看不到新的滚动便不再懒加载 → 连续 end_stall_count 屏被误判为「已到信息流末页」
+   * （实测第 2 屏即误报，且 exhausted 后按钮禁用，用户需切换类目才能重试）。
+   * 修法：已到底时先回退一屏、等一拍让站点重新武装懒加载，再滚到底。
+   */
+  private async scrollToFeedEnd(): Promise<void> {
+    const doc = document.documentElement
+    const maxTop = doc.scrollHeight - window.innerHeight
+    if (maxTop > 0 && window.scrollY >= maxTop - BOTTOM_EPSILON) {
+      window.scrollTo({ top: Math.max(0, maxTop - window.innerHeight), behavior: 'instant' })
+      // 回退与回到底之间必须留出可观察的间隔，否则两次滚动会被合并成一帧、站点看不到「离开底部」
+      await sleep(Math.min(REARM_DELAY_MS, this.config.scroll_delay_ms))
+      if (this.destroyed) return
+    }
+    window.scrollTo({ top: doc.scrollHeight, behavior: 'instant' })
   }
 
   /** 统计相对快照的新增帖子与其中符合时间条件的数量（判定仅用于命中统计，过滤由 observer 链负责） */

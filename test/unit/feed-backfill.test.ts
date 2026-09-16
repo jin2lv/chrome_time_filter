@@ -312,7 +312,61 @@ const appendPosts = (specs: Array<{ expect: string }>): Array<{ id: string; expe
   console.log('✅ 按钮式拉取计入 max_screens 上限')
 }
 
-// ---------- 8. schema 校验：非法 backfill 配置 ----------
+// ---------- 8. 已在文档底部：先回退一屏再滚到底（2026-09-16 真机缺陷回归） ----------
+{
+  const docEl = dom.window.document.documentElement
+  const savedScrollTo = dom.window.scrollTo
+
+  const VIEW_H = 800
+  const DOC_H = 2000
+  const MAX_TOP = DOC_H - VIEW_H
+  let fakeScrollY = 0
+  const tops: number[] = []
+
+  Object.defineProperty(docEl, 'scrollHeight', { configurable: true, get: () => DOC_H })
+  Object.defineProperty(dom.window, 'innerHeight', { configurable: true, get: () => VIEW_H })
+  Object.defineProperty(dom.window, 'scrollY', { configurable: true, get: () => fakeScrollY })
+  dom.window.scrollTo = ((opts: ScrollToOptions | number) => {
+    const top = typeof opts === 'object' ? (opts.top ?? 0) : opts
+    tops.push(top)
+    fakeScrollY = Math.min(Math.max(0, top), MAX_TOP)
+  }) as unknown as typeof window.scrollTo
+
+  const scrollOnce = async (startY: number): Promise<number[]> => {
+    tops.length = 0
+    fakeScrollY = startY
+    loadBehavior = () => []
+    let last: ScanProgress | null = null
+    const controller = makeController(
+      { contexts: ['7x24'], scroll_delay_ms: 20, max_screens: 1, target_hits: 99 },
+      (p) => { last = p },
+    )
+    controller.start()
+    await until(() => last!.state === 'limit')
+    controller.destroy()
+    return [...tops]
+  }
+
+  // 8a. 已处于底部：先回退一屏（maxTop - 视口高），再滚到底
+  const atBottom = await scrollOnce(MAX_TOP)
+  assert.equal(atBottom[0], MAX_TOP - VIEW_H, `已在底部时应先回退一屏，实际滚动序列 ${atBottom.join(' → ')}`)
+  assert.equal(atBottom[atBottom.length - 1], DOC_H, '回退后仍应滚到文档末端')
+  assert.ok(atBottom.length >= 2, '已到底时应产生两次滚动（回退 + 回到底）')
+
+  // 8b. 未到底部：不应产生多余的回退滚动（保持原行为）
+  const notAtBottom = await scrollOnce(0)
+  assert.equal(notAtBottom[0], DOC_H, `未到底时应直接滚到末端，实际 ${notAtBottom.join(' → ')}`)
+  assert.equal(notAtBottom.length, 1, '未到底时不应额外回退')
+
+  // 恢复：jsdom 的 scrollHeight/innerHeight/scrollY 来自原型，删除本段的自有覆盖即可回落
+  delete (docEl as unknown as Record<string, unknown>).scrollHeight
+  delete (dom.window as unknown as Record<string, unknown>).innerHeight
+  delete (dom.window as unknown as Record<string, unknown>).scrollY
+  dom.window.scrollTo = savedScrollTo
+  console.log('✅ 已在文档底部：先回退一屏再滚到底（避免空操作误判末页）')
+}
+
+// ---------- 9. schema 校验：非法 backfill 配置 ----------
 {
   const base = {
     version: '1.0.0',
