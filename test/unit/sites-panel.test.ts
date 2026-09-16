@@ -40,7 +40,12 @@ const xueqiu = byName.get('雪球')
 assert.ok(xueqiu, '雪球条目必须存在')
 check('雪球 domains = [xueqiu.com]', JSON.stringify(xueqiu.domains) === JSON.stringify(['xueqiu.com']))
 check('雪球 origin 映射', JSON.stringify(xueqiu.origins) === JSON.stringify(['*://xueqiu.com/*']))
-check('雪球 last_verified = 2026-09-09', xueqiu.lastVerified === '2026-09-09')
+// last_verified / version 从内置适配包动态推导（写死会在每次合法取证更新时误报，
+// 见 AGENTS.md「内置适配包升版本不破坏测试」的同类教训）
+check(
+  `雪球 last_verified = 适配包声明（${xueqiuAdapter.platforms[0].last_verified}）`,
+  xueqiu.lastVerified === xueqiuAdapter.platforms[0].last_verified,
+)
 check(
   '雪球能力含 补拉/虚拟分页/评论/预设',
   xueqiu.capabilities.includes('信息流补拉') &&
@@ -49,7 +54,7 @@ check(
     xueqiu.capabilities.includes('快捷预设') &&
     xueqiu.capabilities.includes('帖子过滤'),
 )
-check('雪球版本 0.4.0', xueqiu.version === '0.4.0')
+check(`雪球版本 = 适配包声明（${xueqiuAdapter.version}）`, xueqiu.version === xueqiuAdapter.version)
 
 const jisilu = byName.get('集思录')
 assert.ok(jisilu, '集思录条目必须存在')

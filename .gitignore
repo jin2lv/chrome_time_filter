@@ -6,6 +6,8 @@ dist/
 dist-old/
 dist-p2-backup/
 dist-test/
+# 商店形态本地构建（无 key、无预授予 host_permissions，用于按需授权链路真机验证）
+dist-store/
 
 # 打包中间产物
 .store-build/
@@ -35,7 +37,7 @@ gui-test-screenshots/
 
 # 会话交接提示词与临时调试产物（本地文件，不入库）
 NEXT-SESSION-PROMPT.md
-.tmp-*.mjs
+.tmp-*
 .test-out.log
 
 # 本地工具目录（Kilo 插件状态与依赖，不入库）

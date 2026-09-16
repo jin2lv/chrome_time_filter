@@ -13,8 +13,14 @@
  * - 与虚拟分页共享统一状态契约：ScanProgress（unit: 'screens'）→ Popup/悬浮条按单位渲染；
  *   文案统一由 shared/scan-text.ts 提供（切片 2）。
  * - 获取策略（切片 2）：优先滚动追加；滚动无新增且适配包声明 load_more_selector 时，
- *   自动点击「加载更多」继续拉取（雪球实测滚动 2-3 屏后切换为按钮式）；按钮拉取同样
- *   计入 max_screens 上限（一次用户可见的拉取 = 1 屏）；按钮缺失/禁用时维持「无新增计停滞」语义。
+ *   自动点击「加载更多」继续拉取；按钮拉取同样计入 max_screens 上限（一次用户可见的拉取 = 1 屏）；
+ *   按钮缺失/禁用/不可见时维持「无新增计停滞」语义。
+ *   真机取证（2026-09-16）修正：雪球首页 7x24 与关注流均由滚动触发无限加载，
+ *   `a.home__timeline__more` 在补拉全程为 display:none，未观测到「滚动转按钮式」；
+ *   该选择器按防御性配置声明（可见性门控，不可见时不会点击），按钮式路径待其他平台样本验证。
+ * - 已知限制（真机 2026-09-16）：窗口已处于文档底部时 `scrollTo(bottom)` 为空操作，
+ *   站点不再懒加载新行 → 连续 end_stall_count 屏后可能误判「已到信息流末页」；
+ *   重置为 idle 需重挂载（切换类目/改设置）。后续按 P2-21 统一策略时一并处理。
  * - 修改前先读懂 content/index.ts 的 reapplyAll/stopFiltering 对本控制器的生命周期管理。
  */
 import type { FeedBackfillConfig, ScanProgress } from '../shared/types'
