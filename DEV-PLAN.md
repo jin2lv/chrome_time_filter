@@ -21,7 +21,11 @@
 
 真机存储里的远程包是**旧内容**（内含雪球适配包 `last_verified: 2026-09-09`、`backfill` 不含 `load_more_selector`），而同一构建的内置包已升到 **v0.4.1**（`last_verified: 2026-09-16`、含该选择器）。原因是版本单调比较的是「远程 vs 已存远程」，**不比较内置包**——因此只要 CDN 上有任何远程包，它就会持续覆盖较新的内置包。
 
-⇒ **纪律**：每次改动内置适配包后，必须 `npm run adapters:build` → 提交 → **推送**（必要时递增 `adapters.json` 版本号并 purge CDN），否则用户端实际跑的是旧适配内容。当前仓库已完成重建与本地提交，**推送属外向操作，待用户确认后执行**（推送后即可在真机观察「远程版本递增 → 存储更新 → 广播 → 内容脚本重扫」的完整热更新路径）。
+⇒ **纪律**：每次改动内置适配包后，必须 `npm run adapters:build` → 提交 → **推送**（必要时递增 `adapters.json` 版本号并 purge CDN），否则用户端实际跑的是旧适配内容。**已按此纪律执行（2026-09-17）**：`adapters.json` 升至 **1.0.1** → 提交 `3d1f2d5` → 推送 `origin/main` → 两文件各 purge 一次 → CDN 复核**三方 SHA-256 一致**（`0d58e430…`，版本 1.0.1，含 `load_more_selector`）；注意 **purge 有传播延迟**（首次 purge 后 ~40s 仍为旧内容，第二次 purge 后 ~60s 复核已更新）。
+
+### 3.1 未闭环项（如实记录）：远程版本递增的**设备侧落地**未观察到
+
+`updateAdapters()` 仅在 `onInstalled(reason='install')` 与 12h alarm 触发；本轮推送后设备端存储仍为 1.0.0（其 alarm 需等下一个周期）。非破坏性强制触发在本机不可行：SW 控制台 `import()` 被 Service Worker 规范禁止、SW 无「手动检查更新」消息入口（`onMessage` 仅处理 `FILTER_COUNT_UPDATED`/`FILTER_STATE_CHANGED`）、重装会清掉授权。⇒ 登记为待观察项（下个 alarm 周期后读 `adapters.remote.version` 应为 1.0.1）；同时记录一条产品观察：**商店更新（reason='update'）也不会立即拉取**，用户最长 12h 才拿到新适配包（如需更快，可考虑在 `onInstalled` 的 update 分支也调用一次 `updateAdapters()`——列为后续优化项）。
 
 ### 4. 取证方法（本批新增，避免重复踩坑）
 
