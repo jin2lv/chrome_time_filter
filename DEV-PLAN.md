@@ -97,7 +97,8 @@ P0 脚手架与 P1 原型验证（适配包基础设施、时间设置与存储�
 - [x] 东方财富股吧 `guba.json` v0.1.0（2026-09-18 渲染后 DOM 取证）：3 个页面类型条目——「全部与热门」(`mod_time` + `descending-list`，实测 99% 覆盖) 含详情评论 (`#replylist .reply_item[data-reply_id]` + `.pubtime`)、「最新发帖与分类」(`pub_time` + 旧逐帖补年，因推荐区块使 48h 守卫失败、`descending-list` 会 0% 覆盖)、「基金吧总版」(`cite.last` + `descending-list`，实测 99%)。**待扩展级真机验收**
 - [x] 天天基金 `fund.json` v0.1.0：基金详情内嵌吧帖（`.barEssayListWrap` + `td.td05` + `:has(td.td05)` 排除表头 + `descending-list`，实测严格倒序、首行新鲜）。**待扩展级真机验收**
 - [ ] 集思录后续：若实测某板块首屏过空，按板块启用 `source_mode: 'url'` 跨页聚合（`page_url_pattern` 需含板块 id）
-- [ ] 天天基金后续：单基金吧 `list,of{code}.html`（登录态旧模板）取证与适配；`fundf10.eastmoney.com` 档案页按需评估
+- [ ] 天天基金后续：单基金吧 `list,of{code}.html`（登录态旧模板）取证与适配；`fundf10.eastmoney.com` 档案页按需评估；基金吧总版 `jj.html` 真机验证需登录态（匿名访问实测会被 302 到 `/pub/login`）
+- [ ] 财富号详情页 `caifuhao.eastmoney.com`（跨域、未适配）：guba 列表行内约 1/4 是财富号帖，点开其详情页不受过滤。按需评估是否纳入（需单独取证模板与时间戳）
 - [ ] 东方财富：个股资讯、公告、财富号按页面类型真机取证（内置 `eastmoney-news.json` v0.1.0 因栏目页改为客户端渲染，有效性待真机确认）
 - [ ] 同花顺：首页信息流补 `year_inference: 'descending-list'`；「资讯页」先取证再扩展（个股吧/圈子/评论层经取证已废弃或无 Web 端，不扩展）
 - [ ] 淘股吧：**不承诺**（2026-09-18 决议）；站点稳定后重新取证

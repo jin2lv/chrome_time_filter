@@ -43,12 +43,24 @@ check('非法月日被拒', parseNoYearSample('13-45 11:46') === null && parseNo
   check('跨年推进：1 月 → 12 月年份 -1', inferYearFor(s, parseNoYearSample('01-01 08:00')!, now) === 2025)
 }
 {
-  // 跨年推进（列表从 1 月继续翻到上一年 12 月）
+  // 上一年同月日之后的月份（今日 09-18，行显示 12-30）不可能是今年 —— 只能是上一年。
+  // 批次锚定在今年时无法表达「上一年」，必须按不可解析处理（默认显示），
+  // 否则会被补成未来时间（2026-12-30）而被截止时间误杀。
   const s = createYearInferenceState('descending-list')
-  const now = day('2026-01-02T12:00:00+08:00')
-  check('首行当日 → 今年', inferYearFor(s, parseNoYearSample('01-02 10:00')!, now) === 2026)
-  check('1 月内倒序 → 仍是今年', inferYearFor(s, parseNoYearSample('01-01 09:00')!, now) === 2026)
-  check('出现 12 月 → 年份 -1（跨年）', inferYearFor(s, parseNoYearSample('12-31 20:00')!, now) === 2025)
+  check('锚定行正常', inferYearFor(s, parseNoYearSample('09-18 08:29')!, NOW) === 2026)
+  check('上一年 12 月行（月日大于今日）→ 该行不可解析', inferYearFor(s, parseNoYearSample('12-30 23:00')!, NOW) === null)
+  check('紧随其后的 12 月行同样不可解析（不得补成未来时间）', inferYearFor(s, parseNoYearSample('12-29 10:00')!, NOW) === null)
+  check('再下一行仍不可解析', inferYearFor(s, parseNoYearSample('12-28 09:00')!, NOW) === null)
+  check('回到今年范围内的行恢复正常', inferYearFor(s, parseNoYearSample('09-17 08:00')!, NOW) === 2026)
+}
+{
+  // 跨年场景不受上述限制影响：1 月锚定后出现的 12 月行应正确落到上一年
+  const s = createYearInferenceState('descending-list')
+  const now = new Date('2026-01-02T12:00:00+08:00').getTime()
+  check('1 月锚定 → 今年', inferYearFor(s, parseNoYearSample('01-02 10:00')!, now) === 2026)
+  check('1 月 → 12 月（跨年）→ 去年', inferYearFor(s, parseNoYearSample('12-31 20:00')!, now) === 2025)
+  check('跨年后的 12 月行继续按去年推断', inferYearFor(s, parseNoYearSample('12-30 19:00')!, now) === 2025)
+  check('跨年后的 11 月行按去年推断', inferYearFor(s, parseNoYearSample('11-15 19:00')!, now) === 2025)
 }
 {
   // 48h 守卫：首行不新鲜 → 整批不可信（后续行一律 null，不误杀）

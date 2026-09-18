@@ -215,9 +215,9 @@ export function inferYearFor(
 ): number | null {
   if (state.disabled) return null
   const nowDate = new Date(now)
+  const todayMonthDay = (nowDate.getMonth() + 1) * 100 + nowDate.getDate()
   if (!state.started) {
     state.started = true
-    const todayMonthDay = (nowDate.getMonth() + 1) * 100 + nowDate.getDate()
     const year = sample.monthDay > todayMonthDay ? nowDate.getFullYear() - 1 : nowDate.getFullYear()
     const ts = composeTimestamp(year, sample)
     if (ts === null || now - ts > FRESH_WINDOW_MS || ts > now + CLOCK_SKEW_MS) {
@@ -233,6 +233,10 @@ export function inferYearFor(
 
   const month = Math.floor(sample.monthDay / 100)
   if (sample.monthDay <= state.prevMonthDay) {
+    // 批次仍锚定在今年时，「月日大于今日月日」的行不可能是今年（会得到未来时间），
+    // 实际来自上一年，而批次年份无法表达上一年 → 按不可解析处理（默认显示）。
+    // 缺这一步会把上一年 12 月之类的行补成未来时间，被截止时间误杀。
+    if (sample.monthDay > todayMonthDay && state.year === nowDate.getFullYear()) return null
     state.prevMonthDay = sample.monthDay
     state.prevMonth = month
     return state.year

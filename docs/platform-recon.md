@@ -44,6 +44,7 @@
   - 分页为**真实链接整页跳转**（`a.nump` / `a.nextp` → `/list,{code}_{n}.html`、`/list,{code},f_{n}.html`）→ 站点原生翻页可用，未计划扩展侧跨页聚合；若启用 `source_mode: 'url'`，模板需按 code 参数化。
   - 分类 tab（URL 即上下文）：全部 `list,{code}.html`、热门 `list,{code},99.html`、资讯 `list,{code},1,f.html`、公告 `list,{code},3,f.html`、研报 `list,{code},2,f.html`、视频 `list,{code},20.html`、问董秘（外部页）。分类视图与 `f.html` 同模板（`pub_time`）。
   - 详情页（**已按渲染后 DOM 取证 2026-09-18**）：正文 `#newscontent` + `.time`（`YYYY-MM-DD HH:mm:ss`）**不参与过滤**；评论容器 `#replylist .reply_item[data-reply_id]`（实测 48 条 = 「热门评论」区块 5 条 + 最新评论；热门区块前置故行序非单调，但评论按各自时间判定、不依赖顺序），时间 `span.pubtime` 全年份（`YYYY-MM-DD HH:mm:ss`，无需年份推断），属地 `span.ipfrom`（`来自 山东`）不参与解析；评论分页为 URL 翻页（`/news,{code},{id}_{n}.html#allReplyList`），排序控件 最新（默认）/ 最热（`,d.html`）/ 最早（`,z.html`）/ 只看作者（`{uid}.html`）。注：服务端 HTML 的容器 id 为 `#allReplyList`，渲染后实际是 `#replylist`（早期 recon 记录的是前者）。
+  - **覆盖边界（2026-09-18 复核补充）**：列表行内 21/85 是财富号帖，其详情页链接指向 `//caifuhao.eastmoney.com/news/...` —— **跨域**，不在 `SITE_ORIGINS` 内，内容脚本不会注入，因此**财富号详情页不受过滤**（列表行本身会被正常过滤）。若要覆盖需单独取证 `caifuhao.eastmoney.com` 的模板与时间戳。
   - 匿名访问 85 行可正常取到，未见滑块。
   - **已适配为 `src/adapters/guba.json` 的 3 个页面类型条目**（全部与热门 + 详情评论 / 最新发帖与分类 / 基金吧总版），`last_verified` 未设置（未做扩展级真机验收）。
 
@@ -57,6 +58,7 @@
 - **09-18 复核（均按渲染后 DOM，已适配）**：
   - **基金详情内嵌吧帖**（`.barEssayListWrap`）：容器 `.barEssayListWrap > table.popTable > tbody > tr`（实测 21 行，其中 1 行是 `<tr><th>…` 表头 → 适配包用 `tr:has(td.td05)` 排除，避免多出 1 行「无法解析」计数）；列结构 `td01` 阅读、`td02` 回复、`td03` 标题、`td04` 作者、`td05` 最新更新时间（`MM-DD HH:mm` 无年份）；时间**严格倒序、首行新鲜（实测 21 小时前）** → `year_inference: 'descending-list'`（fixture 测试覆盖 100% 推断）；**行内混有 8 个不同吧来源**（`of018957`、`zssh000001`、`of000001`、`of001638`、`of008327`、`of028647`、`of100018`、`of027762`）→ 内嵌列表按基金/指数吧聚合，不能假设单一吧上下文；链接为绝对地址 `http://fund.eastmoney.com/ba/news,{code},{id}.html`；固定约 20 条、无分页。适配包 `fund.json` 的页面白名单仅 `/{6位数字}.html`（其余 fund.eastmoney.com 页面类型未取证、静默退出）。
   - **基金吧总版** `guba.eastmoney.com/jj.html`（DOM 在 guba 域，但属天天基金场景）：容器 `div.balist > ul.newlist > li`（80 行/页），`cite.date`（发帖）/ `cite.last`（末回复）均 `MM-DD HH:mm` 无年份，吧类型前缀 `a.balink` 成立 ✔；**取 `cite.last` + `descending-list`**：该列表按末回复排序，`cite.date` 非单调且首行为置顶旧帖（实测 20 天前，前 2 行带 `em.settop`）→ 用 `cite.date` 会触发 48h 守卫整批放弃（实测 0% 覆盖），用排序键 `cite.last` 实测 80 行覆盖 99%（置顶行按异常行默认显示）。已随 `guba.json` 的「东方财富基金吧总版」条目发布。分页为原生链接 `jj_{n}.html`。
+    - **访问模型不稳定（2026-09-18 复核补充）**：同日稍晚再次访问 `jj.html` 时被 **302 到 `/pub/login`**（早前匿名可正常取到 80 行）→ 该页可能按登录态/访问频率要求登录。适配包行为不受影响（`/pub/login` 不在 `active_paths` 内，静默退出，不会误报失效模态），但**真机验证需用登录态 Profile**。
   - 单基金吧 `list,of{code}.html`（登录态旧模板）、`fundf10.eastmoney.com` 档案页**仍未取证**，不在本期范围。
 
 ## 5. 同花顺 t.10jqka.com.cn
@@ -83,6 +85,7 @@
 
 1. **无年份时间推断**：股吧 `*_f.html`、天天基金、同花顺首页为 `MM-DD HH:mm`。**仅对「严格发帖时间倒序」列表启用** `timestamp.year_inference: 'descending-list'`（首行锚定年份、首行须在近 48h 内、月日回跳视为异常行）；「全部/热门」按最后回复排序的列表一律 `'never'`，整批回退「无法解析 → 默认显示 + 计数」，不误杀。跨年判定为「上一行 1 月 → 本行 12 月」年份 -1（recon 原表述「逐行 MM-DD < 上一行即年份-1」会在同一年的月界上连续减年，已按此修正）。postId 全局单调递增可作一致性校验（尚未实现，非必需）。
    - **2026-09-18 补充（基于 guba 真实数据的修正）**：异常行不再只返回 null，而是把游标**重对齐**到该行，否则「置顶/财富号区块（更旧）+ 正常倒序区块」结构会把游标卡在低水位、令其后所有正常行都被判为异常（实测覆盖率 6% → 99%）。异常行本身依旧不参与过滤（默认显示 + 计数）。
+   - **2026-09-18 补充 2（review 发现的误杀漏洞）**：「月日大于今日月日」的行（如今日 09-18 的列表里出现 12-30）不可能是今年，实际来自上一年，而批次年份无法表达上一年——这类行一律按不可解析处理（默认显示）。缺这一步时，重对齐后的游标会让紧随其后的 12-29 / 12-28 行被补成**未来时间**，被截止时间误杀。跨年场景（1 月锚定后出现 12 月）不受影响：走「1 月→12 月」分支正常年份 -1。
 2. **双时间字段**：股吧（mod_time / pub_time）、天天基金（date / last）——判定必须选「发帖时间」。落地口径：**同域拆成两个页面类型条目**（`active_paths` 隔离，如 `list,{code},f.html` 用发帖时间、`list,{code}.html` 用回复时间则必须独立声明）；`timestamp.selector` 的数组**只在同一语义内**做行模板回退（有图/无图、置顶/普通行）。
 3. **上下文**：全部为「URL 即上下文」（栏目/吧/分类 id），进 `feed_context.path_patterns` 或 `active_paths` 即可，无需前端 tab 监听。
 4. **服务端整页翻页**（集思录/股吧/东财资讯类）：用 `virtual_pagination.source_mode: 'url'` + `page_url_pattern`（含 `{page}`）逐页 fetch 同源整页并离线解析，缓存/去重跨页保持；客户端渲染的站点不适用（东财资讯即属此类，见 §2）。
