@@ -22,7 +22,7 @@ git diff --check
 ```
 
 - **新增测试文件必须手动追加到 `package.json` 的 `test` 脚本**，否则不会被运行。
-- 无 lint / 无测试框架：测试 = `node:assert` + `JSDOM` + 手写 chrome mock，顶层断言抛错即失败。单跑：`npx tsx test/unit/xueqiu-backfill.test.ts`。
+- 无 lint / 无测试框架：测试 = `node:assert` + `JSDOM` + 手写 chrome mock，顶层断言抛错即失败。公共辅助在 `test/helpers/`（`check` / `dom-env` / `chrome-mock`）。单跑：`npx tsx test/unit/xueqiu-backfill.test.ts`。
 - **Vite 配置了 `emptyOutDir: false`**（Windows safe-delete 拦截 quirk），dist/ 会残留旧 hash 文件；干净构建先 `rm -rf dist`。
 
 ## 构建产物与打包
@@ -34,7 +34,7 @@ git diff --check
 
 ## 架构关键（易踩坑）
 
-- **按需授权模型**：manifest 的 `content_scripts` 只有 `*://localhost/*` 占位（Chrome 不允许空数组）。真实注入由 background 用 `chrome.scripting.registerContentScripts` 动态注册（id `tm-main`）。`src/background/service-worker.ts:42` 的 `TARGET_MATCHES` 必须与 `vite.config.ts` 的 `optional_host_permissions`、`web_accessible_resources.matches` 严格同步，添加新平台要同时改三处。
+- **按需授权模型**：manifest 的 `content_scripts` 只有 `*://localhost/*` 占位（Chrome 不允许空数组）。真实注入由 background 用 `chrome.scripting.registerContentScripts` 动态注册（id `tm-main`，常量与 loader 读取见 `src/shared/registration.ts`）。平台清单两处：`vite.config.ts` 的 `SITE_ORIGINS`（`optional_host_permissions` 与 `web_accessible_resources.matches` 共用同一常量）与 `src/adapters/index.ts` 的内置适配包注册；background 的 `TARGET_MATCHES` 由适配包派生的 `SUPPORTED_ORIGINS` 自动同步。添加新平台 = 新增适配包 JSON + 注册（`src/adapters/index.ts`）+ 更新 `SITE_ORIGINS`。
 - **适配包 = 数据驱动 JSON**（内置 4 份：`xueqiu.json` v0.4.1 / `ths.json` / `jisilu.json` / `eastmoney-news.json` v0.1.0）：新增平台时写 JSON 并通过 `validateAdapter`（手写校验，`src/adapters/schema.ts`），改字段需同步 schema、`src/shared/types.ts` 的 `PlatformAdapter` 类型、content script 消费处及对应测试。
 - storage keys：`timeSettings.<domain>`、`prefs`、`adapters.remote`（见 `src/shared/storage.ts`）。
 - 消息协议（`RuntimeMessage`）：background ↔ content script 广播 `TIME_SETTINGS_UPDATED` / `TOGGLE_FILTER` / `ADAPTERS_UPDATED` / `FILTER_COUNT_UPDATED` / `FILTER_STATE_CHANGED` / `PERMISSION_REVOKED`（授权撤销，content 收到后 `stopFiltering()` 恢复 DOM 并停止，对应 background `permissions.onRemoved`，见 `src/background/service-worker.ts`）；加新消息要同步 `src/shared/types.ts`。

@@ -8,10 +8,11 @@
  * - 时间设置变更 → 重应用
  * - 无法解析时间戳：显示 + 计数
  */
-import assert from 'node:assert'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { JSDOM } from 'jsdom'
+import { check, finish } from '../helpers/check'
+import { createMemoryStorage } from '../helpers/chrome-mock'
+import { setupDom } from '../helpers/dom-env'
 
 process.on('unhandledRejection', (err: unknown) => {
   console.error('UNHANDLED_REJECTION:', {
@@ -26,19 +27,11 @@ const MOCK_HTML = readFileSync(resolve(import.meta.dirname, '../fixtures/xueqiu-
 
 // ---------- 环境准备 ----------
 // runScripts: 'dangerously' —— mock 页的帖子由页面脚本动态生成，需要执行
-const dom = new JSDOM(MOCK_HTML, { url: 'http://xueqiu.com:8080/', runScripts: 'dangerously' })
-const { window } = dom
-Object.assign(globalThis, {
-  window,
-  document: window.document,
-  location: window.location,
-  MutationObserver: window.MutationObserver,
-  HTMLElement: window.HTMLElement,
-  Element: window.Element,
-})
+setupDom(MOCK_HTML, { url: 'http://xueqiu.com:8080/', runScripts: 'dangerously' })
 
 // ---------- chrome mock ----------
-const storageMap = new Map<string, unknown>()
+const storage = createMemoryStorage()
+const storageMap = storage.map
 const messageListeners: ((msg: unknown, sender?: unknown, sendResponse?: unknown) => void)[] = []
 let lastReportedCount = -1
 let lastReportedUnparseable = -1
@@ -57,18 +50,7 @@ const chromeMock = {
   },
   storage: {
     onChanged: { addListener: () => {} },
-    local: {
-      get: async (keys?: string | string[] | null | Record<string, unknown>) => {
-        if (keys === null || keys === undefined) return Object.fromEntries(storageMap)
-        const ks = Array.isArray(keys) ? keys : [keys as string]
-        const out: Record<string, unknown> = {}
-        for (const k of ks) if (storageMap.has(k)) out[k] = storageMap.get(k)
-        return out
-      },
-      set: async (items: Record<string, unknown>) => {
-        for (const [k, v] of Object.entries(items)) storageMap.set(k, v)
-      },
-    },
+    local: storage.local,
   },
 } as unknown as typeof chrome
 
@@ -84,17 +66,6 @@ storageMap.set('timeSettings.xueqiu.com', {
 // ---------- 加载 content script ----------
 await import('../../src/content/index.ts')
 await new Promise((r) => setTimeout(r, 150)) // 等 init 完成
-
-let pass = 0
-function check(name: string, cond: boolean, detail = ''): void {
-  if (cond) {
-    pass++
-    console.log(`  ✅ ${name}`)
-  } else {
-    console.log(`  ❌ ${name} ${detail}`)
-    process.exitCode = 1
-  }
-}
 
 function audit(): { total: number; filtered: number; wrong: number; wrongDetail: string[] } {
   const posts = [...document.querySelectorAll('.timeline__item')]
@@ -282,4 +253,4 @@ document.body.appendChild(revokedNew)
 await new Promise((r) => setTimeout(r, 150))
 check('撤销后新帖子不被过滤', revokedNew.style.display !== 'none', revokedNew.style.display)
 
-console.log(`\nContent Script 行为测试完成: ${pass} 项通过`)
+finish('Content Script 行为测试完成')

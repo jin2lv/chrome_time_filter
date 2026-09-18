@@ -2,6 +2,18 @@ import { defineConfig } from 'vite'
 import { crx, defineManifest } from '@crxjs/vite-plugin'
 
 /**
+ * 平台 origin 单一清单：optional_host_permissions 与 web_accessible_resources.matches
+ * 共用，避免两处手抄漂移。新增平台时需同步在 src/adapters/ 注册适配包。
+ */
+const SITE_ORIGINS = [
+  '*://xueqiu.com/*',
+  '*://t.10jqka.com.cn/*',
+  '*://finance.eastmoney.com/*',
+  '*://jisilu.cn/*',
+  '*://www.jisilu.cn/*',
+]
+
+/**
  * TimeMachine 时光机 — Manifest V3 扩展清单
  *
  * 权限模型（按需授权）：
@@ -58,13 +70,7 @@ const manifest = defineManifest({
   // `activeTab` lets the popup inspect the URL of the tab the user explicitly
   // invoked it from. Site access itself remains opt-in via optional hosts.
   permissions: ['activeTab', 'storage', 'scripting', 'alarms'],
-  optional_host_permissions: [
-    '*://xueqiu.com/*',
-    '*://t.10jqka.com.cn/*',
-    '*://finance.eastmoney.com/*',
-    '*://jisilu.cn/*',
-    '*://www.jisilu.cn/*',
-  ],
+  optional_host_permissions: SITE_ORIGINS,
 
   // CRXJS turns the declared content script into a small loader which imports
   // the actual module at runtime. Those modules must be web-accessible to the
@@ -72,13 +78,7 @@ const manifest = defineManifest({
   web_accessible_resources: [
     {
       resources: ['assets/*'],
-      matches: [
-        '*://xueqiu.com/*',
-        '*://t.10jqka.com.cn/*',
-        '*://finance.eastmoney.com/*',
-        '*://jisilu.cn/*',
-        '*://www.jisilu.cn/*',
-      ],
+      matches: SITE_ORIGINS,
     },
   ],
 

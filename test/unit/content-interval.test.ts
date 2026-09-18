@@ -13,8 +13,10 @@
  * 实现说明：以 no-op MutationObserver 模拟「后台变异处理丢失」，帖子只能被
  * visibilitychange 触发的增量补扫（scanExisting）处理。
  */
-import { JSDOM } from 'jsdom'
 import dayjs from 'dayjs'
+import { check, finish } from '../helpers/check'
+import { createMemoryStorage } from '../helpers/chrome-mock'
+import { setupDom } from '../helpers/dom-env'
 
 process.on('unhandledRejection', (err: unknown) => {
   console.error('UNHANDLED_REJECTION:', {
@@ -25,17 +27,9 @@ process.on('unhandledRejection', (err: unknown) => {
   process.exit(1)
 })
 
-const dom = new JSDOM('<!doctype html><html><body><div id="feed"></div></body></html>', {
+const dom = setupDom('<!doctype html><html><body><div id="feed"></div></body></html>', {
   url: 'http://xueqiu.com:8080/',
   runScripts: 'dangerously',
-})
-const { window } = dom
-Object.assign(globalThis, {
-  window,
-  document: window.document,
-  location: window.location,
-  HTMLElement: window.HTMLElement,
-  Element: window.Element,
 })
 // jsdom 默认 visibilityState='prerender'，与真实 Chrome 不符；覆写为 visible 供看门狗判定
 Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
@@ -51,7 +45,8 @@ class NoopMutationObserver {
 ;(globalThis as Record<string, unknown>).MutationObserver = NoopMutationObserver
 
 // ---------- chrome mock ----------
-const storageMap = new Map<string, unknown>()
+const storage = createMemoryStorage()
+const storageMap = storage.map
 const messageListeners: ((msg: unknown, sender?: unknown, sendResponse?: unknown) => void)[] = []
 let lastReportedCount = -1
 
@@ -64,18 +59,7 @@ const chromeMock = {
   },
   storage: {
     onChanged: { addListener: () => {} },
-    local: {
-      get: async (keys?: string | string[] | null | Record<string, unknown>) => {
-        if (keys === null || keys === undefined) return Object.fromEntries(storageMap)
-        const ks = Array.isArray(keys) ? keys : [keys as string]
-        const out: Record<string, unknown> = {}
-        for (const k of ks) if (storageMap.has(k)) out[k] = storageMap.get(k)
-        return out
-      },
-      set: async (items: Record<string, unknown>) => {
-        for (const [k, v] of Object.entries(items)) storageMap.set(k, v)
-      },
-    },
+    local: storage.local,
   },
 } as unknown as typeof chrome
 
@@ -108,17 +92,6 @@ const p2 = makePost('1天前') // 窗口外（昨天）
 await import('../../src/content/index.ts')
 await new Promise((r) => setTimeout(r, 150)) // 等 init 完成
 
-let pass = 0
-function check(name: string, cond: boolean, detail = ''): void {
-  if (cond) {
-    pass++
-    console.log(`  ✅ ${name}`)
-  } else {
-    console.log(`  ❌ ${name} ${detail}`)
-    process.exitCode = 1
-  }
-}
-
 function isVisible(el: HTMLElement): boolean {
   return el.style.display !== 'none'
 }
@@ -137,7 +110,7 @@ check('追加的越界节点未被处理（复现丢失）', lastReportedCount =
 
 // 3. 前台补扫看门狗：visibilitychange → scanExisting → 越界节点被过滤
 console.log('3. visibilitychange 前台补扫恢复过滤')
-document.dispatchEvent(new window.Event('visibilitychange'))
+document.dispatchEvent(new Event('visibilitychange'))
 await new Promise((r) => setTimeout(r, 50))
 check('补扫后越界节点被隐藏', !isVisible(p3))
 check('窗口内帖子仍保留、窗口外仍隐藏', isVisible(p1) && !isVisible(p2))
@@ -145,13 +118,9 @@ check('计数上报 = 2', lastReportedCount === 2, `got ${lastReportedCount}`)
 
 // 4. 重复补扫幂等：再次 visibilitychange 不改变状态、计数不重复
 console.log('4. 重复补扫幂等')
-document.dispatchEvent(new window.Event('visibilitychange'))
+document.dispatchEvent(new Event('visibilitychange'))
 await new Promise((r) => setTimeout(r, 50))
 check('状态保持：p1 可见、p2/p3 隐藏', isVisible(p1) && !isVisible(p2) && !isVisible(p3))
 check('计数不重复（仍 = 2）', lastReportedCount === 2, `got ${lastReportedCount}`)
 
-console.log(`\n区间模式 + 前台补扫测试完成: ${pass} 项通过`)
-if (process.exitCode === 1) {
-  console.error('存在失败项')
-  process.exit(1)
-}
+finish('区间模式 + 前台补扫测试完成')

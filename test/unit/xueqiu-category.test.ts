@@ -1,7 +1,7 @@
 import assert from 'node:assert'
-import { JSDOM } from 'jsdom'
+import { setupDom } from '../helpers/dom-env'
 
-const dom = new JSDOM(`
+setupDom(`
   <main class="stock-timeline">
     <div class="stock-timeline-tabs">
       <a class="active">讨论</a><a>资讯</a>
@@ -13,20 +13,9 @@ const dom = new JSDOM(`
   </main>
 `, { url: 'https://xueqiu.com/S/SZ300142' })
 
-const { window } = dom
-const emptyTab = window.document.createElement('a')
+const emptyTab = document.createElement('a')
 emptyTab.textContent = 'empty'
-window.document.querySelector('.stock-timeline-tabs')!.appendChild(emptyTab)
-Object.assign(globalThis, {
-  window,
-  document: window.document,
-  location: window.location,
-  MutationObserver: window.MutationObserver,
-  KeyboardEvent: window.KeyboardEvent,
-  Event: window.Event,
-  HTMLElement: window.HTMLElement,
-  Element: window.Element,
-})
+document.querySelector('.stock-timeline-tabs')!.appendChild(emptyTab)
 
 const renderPosts = (category: string): void => {
   document.querySelector('.status-list')!.innerHTML = Array.from({ length: 10 }, (_, index) => `

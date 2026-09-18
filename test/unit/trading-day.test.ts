@@ -15,17 +15,7 @@ import {
   lunchReviewRange,
   tradingSessionRange,
 } from '../../src/shared/trading'
-
-let pass = 0
-function check(name: string, cond: boolean, detail = ''): void {
-  if (cond) {
-    pass++
-    console.log(`  ✅ ${name}`)
-  } else {
-    console.log(`  ❌ ${name} ${detail}`)
-    process.exitCode = 1
-  }
-}
+import { check, finish } from '../helpers/check'
 
 const d = (y: number, m: number, day: number, h = 12, min = 0): Date => new Date(y, m - 1, day, h, min)
 
@@ -71,5 +61,4 @@ check(
   lStart.getHours() === 9 && lStart.getMinutes() === 30 && lEnd.getHours() === 11 && lEnd.getMinutes() === 30,
 )
 
-console.log(`\n交易日历辅助测试完成: ${pass} 项通过`)
-if (process.exitCode === 1) process.exit(1)
+finish('交易日历辅助测试完成')

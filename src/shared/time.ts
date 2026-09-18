@@ -42,18 +42,29 @@ export function extractTimePart(raw: string): string {
   return raw.split('·')[0].trim()
 }
 
-/** patterns 编译缓存：同一适配包正则复用实例，避免逐帖重复编译 */
-const relativePatternCache = new Map<string, RegExp>()
+/** 正则编译缓存值：null 表示该 pattern 不合法（避免重复编译与重复告警） */
+type RegexCache = Map<string, RegExp | null>
 
-/** 获取（或编译并缓存）相对时间正则 */
-function getRelativePattern(regex: string): RegExp {
-  let re = relativePatternCache.get(regex)
-  if (!re) {
-    re = new RegExp(regex)
-    relativePatternCache.set(regex, re)
+/** 编译并缓存适配包正则；非法正则返回 null（调用方跳过该规则，不中断调用链） */
+function compileCached(cache: RegexCache, pattern: string): RegExp | null {
+  if (cache.has(pattern)) return cache.get(pattern) ?? null
+  try {
+    const re = new RegExp(pattern)
+    cache.set(pattern, re)
+    return re
+  } catch {
+    console.warn('[时光机] 适配包正则不合法，已跳过:', pattern)
+    cache.set(pattern, null)
+    return null
   }
-  return re
 }
+
+/** patterns 编译缓存：同一适配包正则复用实例，避免逐帖重复编译 */
+const relativePatternCache: RegexCache = new Map()
+/** extract_pattern 编译缓存 */
+const extractPatternCache: RegexCache = new Map()
+/** strip_pattern 编译缓存 */
+const stripPatternCache: RegexCache = new Map()
 
 /** 相对时间解析（时间锚定）
  * @param text 原始时间文本（可含 "· 来自xxx" 后缀）
@@ -67,7 +78,8 @@ export function parseRelativeTime(
 ): number | null {
   const part = extractTimePart(text)
   for (const pat of patterns) {
-    const re = getRelativePattern(pat.regex)
+    const re = compileCached(relativePatternCache, pat.regex)
+    if (!re) continue
     const m = part.match(re)
     if (!m) continue
     const n = m[1] !== undefined ? parseInt(m[1], 10) : 1
@@ -132,28 +144,14 @@ export function parseAbsoluteTime(
   return null
 }
 
-/** extract_pattern 编译缓存：避免每个帖子重复编译（同一正则复用实例） */
-const extractPatternCache = new Map<string, RegExp>()
-
-/** strip_pattern 编译缓存：同一正则复用实例 */
-const stripPatternCache = new Map<string, RegExp>()
-
 /**
  * 应用 strip_pattern 前缀剥离；正则非法时静默跳过（不中断调用链）。
  * @returns 剥离后的文本（剥离失败时返回原文）
  */
 function applyStripPattern(raw: string, stripPattern: string | null | undefined): string {
   if (!stripPattern) return raw
-  let re = stripPatternCache.get(stripPattern)
-  if (!re) {
-    try {
-      re = new RegExp(stripPattern)
-    } catch {
-      console.warn('[时光机] strip_pattern 不是合法正则，已跳过:', stripPattern)
-      return raw
-    }
-    stripPatternCache.set(stripPattern, re)
-  }
+  const re = compileCached(stripPatternCache, stripPattern)
+  if (!re) return raw
   return raw.replace(re, '').trim()
 }
 
@@ -171,13 +169,11 @@ export function parseTimestamp(
   const ts = adapter.timestamp
   let extractText = text
   if (ts.extract_pattern) {
-    let re = extractPatternCache.get(ts.extract_pattern)
-    if (!re) {
-      re = new RegExp(ts.extract_pattern)
-      extractPatternCache.set(ts.extract_pattern, re)
+    const re = compileCached(extractPatternCache, ts.extract_pattern)
+    if (re) {
+      const m = extractText.match(re)
+      if (m) extractText = m[0]
     }
-    const m = extractText.match(re)
-    if (m) extractText = m[0]
   }
   if (ts.type === 'relative' && ts.patterns) {
     const rel = parseRelativeTime(extractText, ts.patterns, anchor)

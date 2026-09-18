@@ -63,11 +63,11 @@ function validatePlatform(pl: PlatformAdapter): string[] {
   if (!TIMESTAMP_TYPES.includes(ts.type)) {
     errs.push(`timestamp.type 必须是 ${TIMESTAMP_TYPES.join('/')}`)
   }
-  if (ts.type === 'absolute' && (typeof ts.format !== 'string' || !ts.format)) {
-    errs.push('absolute 类型必须提供 timestamp.format')
-  }
-  if (ts.type === 'custom' && (typeof ts.format !== 'string' || !ts.format)) {
-    errs.push('custom 类型必须提供 timestamp.format')
+  if (
+    (ts.type === 'absolute' || ts.type === 'custom') &&
+    (typeof ts.format !== 'string' || !ts.format)
+  ) {
+    errs.push(`${ts.type} 类型必须提供 timestamp.format`)
   }
   // date_attr（可选）：日期在帖子容器 data-* 属性时的组合模式
   if (ts.date_attr !== undefined && ts.date_attr !== null && typeof ts.date_attr !== 'string') {

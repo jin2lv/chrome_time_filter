@@ -15,6 +15,19 @@ interface VirtualPaginationOptions {
 type ScanState = 'idle' | 'loading' | 'exhausted' | 'limit' | 'cancelled' | 'error'
 
 /**
+ * 原生列表的帖子 ID 签名：用于「类别切换 / 翻页前后内容是否真正变化」的检测。
+ * content/index.ts 的类别切换轮询与控制器内部共用同一实现，避免两处漂移。
+ */
+export function listSignature(
+  config: Pick<VirtualPaginationConfig, 'list_selector' | 'post_id'>,
+): string {
+  const list = document.querySelector(config.list_selector)
+  return [...(list?.querySelectorAll(config.post_id.selector) ?? [])]
+    .map((element) => element.getAttribute(config.post_id.attr) ?? '')
+    .join('|')
+}
+
+/**
  * Config-driven lazy scanner that repacks matching native pages into extension-owned pages.
  * Platform DOM knowledge stays in the adapter; this class only manages scanning and rendering.
  */
@@ -50,14 +63,10 @@ export class VirtualPaginationController {
       options.config.native_pagination_selector,
     )
     if (!nativeList || !nativePagination) return null
-    return new VirtualPaginationController(options, nativeList, nativePagination)
+    return new VirtualPaginationController(options, nativeList)
   }
 
-  private constructor(
-    options: VirtualPaginationOptions,
-    nativeList: HTMLElement,
-    _nativePagination: HTMLElement,
-  ) {
+  private constructor(options: VirtualPaginationOptions, nativeList: HTMLElement) {
     this.config = options.config
     this.postSelector = options.postSelector
     this.decide = options.decide
@@ -391,10 +400,7 @@ export class VirtualPaginationController {
   }
 
   private sourcePageSignature(): string {
-    const currentList = document.querySelector<HTMLElement>(this.config.list_selector)
-    return [...(currentList?.querySelectorAll(this.config.post_id.selector) ?? [])]
-      .map((element) => element.getAttribute(this.config.post_id.attr) ?? '')
-      .join('|')
+    return listSignature(this.config)
   }
 
   private renderPage(): void {

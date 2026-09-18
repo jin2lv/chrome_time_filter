@@ -10,8 +10,15 @@
  */
 import { AdapterManager } from '../adapters'
 import { extractDomain, getPrefs, getTimeSettings, setTimeSettings } from '../shared/storage'
+import { CONTENT_SCRIPT_ID, getContentScriptJs } from '../shared/registration'
 import { scanDiagnosticLine, scanStatusText } from '../shared/scan-text'
-import { lastTradingDayRange, lunchReviewRange, tradingSessionRange } from '../shared/trading'
+import {
+  endOfDay,
+  lastTradingDayRange,
+  lunchReviewRange,
+  startOfDay,
+  tradingSessionRange,
+} from '../shared/trading'
 import type { ContentState, PlatformAdapter, TimeSettings } from '../shared/types'
 import { createIcons, Settings } from 'lucide'
 
@@ -61,8 +68,6 @@ let eventsBound = false
 settingsBtn.addEventListener('click', () => {
   void chrome.runtime.openOptionsPage()
 })
-
-const CONTENT_SCRIPT_ID = 'tm-main'
 
 /** 选择"目标站点 tab"：优先当前活动 tab；若为扩展页面（如 popup 被钉住）则回退到最近的非扩展 tab */
 async function pickTargetTab(): Promise<chrome.tabs.Tab | undefined> {
@@ -197,10 +202,6 @@ function setAuthStatus(message: string, isError = false): void {
   authStatus.classList.toggle('error', isError)
 }
 
-function getContentScriptJs(): string[] {
-  return chrome.runtime.getManifest().content_scripts?.[0]?.js ?? []
-}
-
 async function ensureContentScriptActive(): Promise<void> {
   if (tabId === undefined) return
 
@@ -308,7 +309,7 @@ function copyDiagnostics(): void {
     : `截止 ${fmtBoundaryTs(settings?.cutoff)}`
   const scanLine = scanDiagnosticLine(state.scan)
   const lines = [
-    `时光机诊断报告 | 平台=${adapter?.name ?? '未知'} | 适配包内置版本=${adapterVersion}`,
+    `时光机诊断报告 | 平台=${adapter?.name ?? '未知'} | 适配包版本=${adapterVersion}`,
     `模式=${settings?.mode ?? '未设定'} | 边界=${boundary}`,
     ...(scanLine ? [scanLine] : []),
     `已过滤 ${state.filteredCount} 条 | ${state.unparseableCount} 条无法解析`,
@@ -448,16 +449,6 @@ function resolvePreset(preset: string): number {
 
 function resolveWindowPreset(preset: string): { start: number; end: number } {
   const now = new Date()
-  const endOfDay = (date: Date): number => {
-    const value = new Date(date)
-    value.setHours(23, 59, 59, 999)
-    return value.getTime()
-  }
-  const startOfDay = (date: Date): number => {
-    const value = new Date(date)
-    value.setHours(0, 0, 0, 0)
-    return value.getTime()
-  }
   if (preset === 'yesterday') {
     const date = new Date(now)
     date.setDate(date.getDate() - 1)

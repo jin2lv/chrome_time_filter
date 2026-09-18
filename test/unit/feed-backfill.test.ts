@@ -12,18 +12,12 @@
  * - schema 校验：非法 backfill 配置被拒绝
  */
 import assert from 'node:assert'
-import { JSDOM } from 'jsdom'
 import { FeedBackfillController } from '../../src/content/feed-backfill'
 import { validateAdapter } from '../../src/adapters/schema'
 import type { ScanProgress } from '../../src/shared/types'
+import { setupDom } from '../helpers/dom-env'
 
-const dom = new JSDOM(`<body></body>`, { url: 'http://xueqiu.com:8080/' })
-Object.assign(globalThis, {
-  window: dom.window,
-  document: dom.window.document,
-  HTMLElement: dom.window.HTMLElement,
-  Element: dom.window.Element,
-})
+const dom = setupDom(`<body></body>`, { url: 'http://xueqiu.com:8080/' })
 
 // jsdom 的 scrollTo 是 no-op 并报 Not implemented；覆写为「滚动即触发站点加载更多」
 let loadBehavior: () => Array<{ id: string; expect: string }> = () => []

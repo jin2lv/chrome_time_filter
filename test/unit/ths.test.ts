@@ -9,24 +9,12 @@
  * - 跨年修正（MMDD 解析出未来时间 → 年份 -1）
  * - AdapterManager 双平台注册
  */
-import assert from 'node:assert'
-import { JSDOM } from 'jsdom'
 import { AdapterManager } from '../../src/adapters'
 import { extractTimestampText, parseAbsoluteTime } from '../../src/shared/time'
+import { check, finish } from '../helpers/check'
+import { setupDom } from '../helpers/dom-env'
 
-const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://t.10jqka.com.cn/' })
-Object.assign(globalThis, { window: dom.window, document: dom.window.document })
-
-let pass = 0
-function check(name: string, cond: boolean, detail = ''): void {
-  if (cond) {
-    pass++
-    console.log(`  ✅ ${name}`)
-  } else {
-    console.log(`  ❌ ${name} ${detail}`)
-    process.exitCode = 1
-  }
-}
+setupDom('<!doctype html><html><body></body></html>', { url: 'http://t.10jqka.com.cn/' })
 
 // 1. 适配包匹配
 const ths = AdapterManager.getAdapter('t.10jqka.com.cn')
@@ -64,4 +52,4 @@ const { validateAdapter } = await import('../../src/adapters/schema')
 const errs = validateAdapter((pkg as { default: unknown }).default)
 check('ths 适配包通过 Schema 校验', errs === null, JSON.stringify(errs))
 
-console.log(`\n同花顺适配包测试完成: ${pass} 项通过`)
+finish('同花顺适配包测试完成')

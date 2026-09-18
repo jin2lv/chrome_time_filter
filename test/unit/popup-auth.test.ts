@@ -1,16 +1,10 @@
 import assert from 'node:assert'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { JSDOM } from 'jsdom'
+import { setupDom } from '../helpers/dom-env'
 
 const html = readFileSync(resolve(import.meta.dirname, '../../src/popup/index.html'), 'utf8')
-const dom = new JSDOM(html, { url: 'chrome-extension://test/src/popup/index.html' })
-
-Object.assign(globalThis, {
-  window: dom.window,
-  document: dom.window.document,
-  HTMLElement: dom.window.HTMLElement,
-})
+setupDom(html, { url: 'chrome-extension://test/src/popup/index.html' })
 
 let authorized = false
 let requestCount = 0

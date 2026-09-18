@@ -29,6 +29,8 @@ export interface Prefs {
   commentNoTime: 'show' | 'collapse'
   /** 页面右下角悬浮提示条（P2-8，默认关） */
   floatingBanner: boolean
+  /** 引导页完成标记（welcome.js 直接写入；当前无读取方，保留供设置迁移/审计） */
+  onboarded?: boolean
 }
 
 export const DEFAULT_PREFS: Prefs = {

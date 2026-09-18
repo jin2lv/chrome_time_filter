@@ -14,7 +14,11 @@
  * - 开关（按 Tab 独立，新 Tab 默认开启）与时间变更消息处理
  */
 import { AdapterManager } from '../adapters'
-import { VirtualPaginationController, type PostDecision } from './virtual-pagination'
+import {
+  VirtualPaginationController,
+  listSignature,
+  type PostDecision,
+} from './virtual-pagination'
 import { FeedBackfillController } from './feed-backfill'
 import { extractDomain, getPrefs, getTimeSettings } from '../shared/storage'
 import { extractTimestampText, parseTimestamp } from '../shared/time'
@@ -182,6 +186,16 @@ function processPost(el: HTMLElement): void {
   }
 }
 
+/** 评论无法解析时间（或无时间戳元素）时的回退处理（prefs.commentNoTime） */
+function applyCommentNoTimeFallback(el: HTMLElement): void {
+  if (commentNoTime === 'collapse') {
+    filteredCount++
+    el.dataset[FILTERED_FLAG] = '1'
+    applyStrategy(el)
+  }
+  report()
+}
+
 /** 处理单条评论：按自身时间戳独立判定（P2-4） */
 function processComment(el: HTMLElement): void {
   if (!adapter || !settings || !enabled) return
@@ -194,15 +208,7 @@ function processComment(el: HTMLElement): void {
   if (!text) {
     addDiagnostic('comment', '未找到时间元素')
     unparseableCount++
-    // 无时间戳 → 按回退策略（默认全部显示；'collapse' 时折叠）
-    if (commentNoTime === 'collapse') {
-      filteredCount++
-      el.dataset[FILTERED_FLAG] = '1'
-      applyStrategy(el)
-      report()
-    } else {
-      report()
-    }
+    applyCommentNoTimeFallback(el)
     return
   }
   // 评论时间锚定：与帖子一致，首次检测时刻持久化
@@ -212,14 +218,7 @@ function processComment(el: HTMLElement): void {
   if (!parsed) {
     addDiagnostic('comment', text)
     unparseableCount++
-    if (commentNoTime === 'collapse') {
-      filteredCount++
-      el.dataset[FILTERED_FLAG] = '1'
-      applyStrategy(el)
-      report()
-    } else {
-      report()
-    }
+    applyCommentNoTimeFallback(el)
     return
   }
   if (shouldFilter(parsed.timestamp)) {
@@ -244,17 +243,13 @@ function scanExisting(): void {
   }
 }
 
-/** 重应用（时间设置变化 / 开关切换）：重置后全量重扫 */
-function reapplyAll(): void {
-  if (!adapter) return
-  lastScanReapplyAt = Date.now()
-  if (virtualRestartTimer) clearTimeout(virtualRestartTimer)
-  virtualRestartTimer = null
-  virtualTransitionActive = false
-  virtualTransitionId++
+/**
+ * 销毁扫描引擎、恢复被过滤 DOM 并重置计数/诊断。
+ * reapplyAll（重扫）与 stopFiltering（授权撤销）共用，两处生命周期语义保持一致。
+ */
+function teardownFilterState(): void {
   virtualPagination?.destroy()
   virtualPagination = null
-  virtualContextValue = ''
   feedBackfill?.destroy()
   feedBackfill = null
   // 恢复所有标记元素（还原原始 display）
@@ -273,6 +268,18 @@ function reapplyAll(): void {
   unparseableCount = 0
   diagnostics = []
   scanProgress = undefined
+}
+
+/** 重应用（时间设置变化 / 开关切换）：重置后全量重扫 */
+function reapplyAll(): void {
+  if (!adapter) return
+  lastScanReapplyAt = Date.now()
+  if (virtualRestartTimer) clearTimeout(virtualRestartTimer)
+  virtualRestartTimer = null
+  virtualTransitionActive = false
+  virtualTransitionId++
+  virtualContextValue = ''
+  teardownFilterState()
   feedContextValue = currentFeedContext()
   completeness = feedContextValue
     ? adapter.feed_context?.completeness ?? 'loaded-only'
@@ -288,6 +295,17 @@ function hasTimeBoundary(): boolean {
   return settings?.mode === 'cutoff'
     ? settings.cutoff !== null
     : settings?.window?.start != null && settings.window.end != null
+}
+
+/** 扫描状态 → 内容完整性（补拉 / 虚拟分页 onStateChange 共用；fallback 为就绪态默认值） */
+function completenessFromScan(
+  state: ScanProgress['state'],
+  fallback: ContentCompleteness,
+): ContentCompleteness {
+  if (state === 'loading') return 'scanning'
+  if (state === 'exhausted') return 'exhausted'
+  if (state === 'error') return 'error'
+  return fallback
 }
 
 /** 挂载/重建信息流补拉入口；上下文不在适配包白名单内则静默不挂载 */
@@ -306,13 +324,7 @@ function mountFeedBackfill(): void {
     decide: decidePost,
     onStateChange: (progress) => {
       scanProgress = progress
-      completeness = progress.state === 'loading'
-        ? 'scanning'
-        : progress.state === 'exhausted'
-          ? 'exhausted'
-          : progress.state === 'error'
-            ? 'error'
-            : 'loaded-only'
+      completeness = completenessFromScan(progress.state, 'loaded-only')
       report()
     },
   })
@@ -322,11 +334,7 @@ function mountFeedBackfill(): void {
 
 function startVirtualPagination(): boolean {
   const config = adapter?.virtual_pagination
-  const hasTimeBoundary =
-    settings?.mode === 'cutoff'
-      ? settings.cutoff !== null
-      : settings?.window?.start != null && settings.window.end != null
-  if (!config || !settings || !enabled || !hasTimeBoundary) return false
+  if (!config || !settings || !enabled || !hasTimeBoundary()) return false
   if (virtualPagination?.isActive()) return true
   virtualContextValue = config.context_selector
     ? document.querySelector(config.context_selector)?.textContent?.trim() ?? ''
@@ -343,13 +351,7 @@ function startVirtualPagination(): boolean {
     },
     onStateChange: (progress) => {
       scanProgress = progress
-      completeness = progress.state === 'loading'
-        ? 'scanning'
-        : progress.state === 'exhausted'
-          ? 'exhausted'
-          : progress.state === 'error'
-            ? 'error'
-            : 'complete'
+      completeness = completenessFromScan(progress.state, 'complete')
       report()
     },
   })
@@ -359,22 +361,10 @@ function startVirtualPagination(): boolean {
 
 function virtualPaginationDomReady(): boolean {
   const config = adapter?.virtual_pagination
-  const hasTimeBoundary = settings?.mode === 'cutoff'
-    ? settings.cutoff !== null
-    : settings?.window?.start != null && settings.window.end != null
-  if (!config || !settings || !enabled || !hasTimeBoundary) return false
+  if (!config || !settings || !enabled || !hasTimeBoundary()) return false
   if (config.empty_selector && document.querySelector(config.empty_selector)) return false
   return !!document.querySelector(config.list_selector)
     && !!document.querySelector(config.native_pagination_selector)
-}
-
-function virtualSourceSignature(): string {
-  const config = adapter?.virtual_pagination
-  if (!config) return ''
-  const list = document.querySelector(config.list_selector)
-  return [...(list?.querySelectorAll(config.post_id.selector) ?? [])]
-    .map((element) => element.getAttribute(config.post_id.attr) ?? '')
-    .join('|')
 }
 
 function scheduleVirtualContextRestart(expectedContext = '', domAlreadyChanged = false): void {
@@ -388,7 +378,7 @@ function scheduleVirtualContextRestart(expectedContext = '', domAlreadyChanged =
   const previousEmpty = config.empty_selector
     ? document.querySelector(config.empty_selector)
     : null
-  const previousSignature = virtualSourceSignature()
+  const previousSignature = listSignature(config)
   const stableWait = config.context_wait_ms ?? config.wait_ms ?? 250
   const deadline = Date.now() + Math.max(8000, stableWait * 4)
   let candidateKey = ''
@@ -412,7 +402,7 @@ function scheduleVirtualContextRestart(expectedContext = '', domAlreadyChanged =
       : null
     const list = document.querySelector(config.list_selector)
     const pagination = document.querySelector(config.native_pagination_selector)
-    const signature = virtualSourceSignature()
+    const signature = listSignature(config)
     const nativeChanged = domAlreadyChanged
       || list !== previousList
       || pagination !== previousPagination
@@ -528,10 +518,7 @@ function updateBanner(): void {
   if (bannerTimer) return
   bannerTimer = setTimeout(() => {
     bannerTimer = null
-    const hasBoundary = settings?.mode === 'window'
-      ? settings.window?.start != null && settings.window.end != null
-      : settings?.cutoff != null
-    if (!floatingBanner || !settings || !hasBoundary) {
+    if (!floatingBanner || !settings || !hasTimeBoundary()) {
       removeBannerUi()
       return
     }
@@ -760,26 +747,9 @@ function stopFiltering(): void {
     clearTimeout(bannerTimer)
     bannerTimer = null
   }
-  virtualPagination?.destroy()
-  virtualPagination = null
-  feedBackfill?.destroy()
-  feedBackfill = null
-  // 恢复所有被过滤元素与占位条
-  document
-    .querySelectorAll(`[${FILTERED_ATTR}="1"]`)
-    .forEach((el) => {
-      const htmlEl = el as HTMLElement
-      restoreOriginalDisplay(htmlEl)
-      delete htmlEl.dataset[FILTERED_FLAG]
-    })
-  document.querySelectorAll('.tm-collapsed').forEach((ph) => ph.remove())
+  teardownFilterState()
   removeBannerUi()
-  filteredCount = 0
-  unparseableCount = 0
-  diagnostics = []
-  processed = new WeakSet()
   completeness = 'complete'
-  scanProgress = undefined
   virtualContextValue = ''
   feedContextValue = ''
   chrome.runtime

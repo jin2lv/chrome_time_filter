@@ -9,17 +9,7 @@
 import assert from 'node:assert'
 import { scanDiagnosticLine, scanStatusText } from '../../src/shared/scan-text'
 import type { ScanProgress } from '../../src/shared/types'
-
-let pass = 0
-function check(name: string, cond: boolean, detail = ''): void {
-  if (cond) {
-    pass++
-    console.log(`  ✅ ${name}`)
-  } else {
-    console.log(`  ❌ ${name} ${detail}`)
-    process.exitCode = 1
-  }
-}
+import { check, finish } from '../helpers/check'
 
 const screens = (state: ScanProgress['state'], scanned = 3, max = 10): ScanProgress => ({
   state,
@@ -61,5 +51,4 @@ check(
   !d1.includes('http') && !d2.includes('http') && !/帖子|评论/.test(d1 + d2),
 )
 
-console.log(`\n扫描状态文案测试完成: ${pass} 项通过`)
-if (process.exitCode === 1) process.exit(1)
+finish('扫描状态文案测试完成')

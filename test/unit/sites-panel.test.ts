@@ -19,18 +19,9 @@ import xueqiuAdapter from '../../src/adapters/xueqiu.json'
 import thsAdapter from '../../src/adapters/ths.json'
 import jisiluAdapter from '../../src/adapters/jisilu.json'
 import eastmoneyNewsAdapter from '../../src/adapters/eastmoney-news.json'
+import { check, finish } from '../helpers/check'
 
-let pass = 0
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-function check(name: string, cond: boolean, detail = ''): void {
-  if (cond) {
-    pass++
-    console.log(`  ✅ ${name}`)
-  } else {
-    console.log(`  ❌ ${name} ${detail}`)
-    process.exitCode = 1
-  }
-}
 
 // ---------- 1. SUPPORTED_SITES 派生 ----------
 check('平台数 = 4', SUPPORTED_SITES.length === 4, `got ${SUPPORTED_SITES.length}`)
@@ -143,5 +134,4 @@ const actualSum = createHash('sha256').update(releaseJson).digest('hex')
 check('adapters.json.sha256 与文件内容一致（客户端校验依据）', declaredSum === actualSum, `${declaredSum} vs ${actualSum}`)
 check('disabled 字段可省略（内置包不含）', releasePkg.disabled === undefined)
 
-console.log(`\n站点能力矩阵测试完成: ${pass} 项通过`)
-if (process.exitCode === 1) process.exit(1)
+finish('站点能力矩阵测试完成')

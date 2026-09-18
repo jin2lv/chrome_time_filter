@@ -479,7 +479,7 @@ button:focus-visible,
 }
 
 .pages-table td {
-  color: var(--text, #333);
+  color: var(--fg);
 }
 
 @media (max-width: 700px) {

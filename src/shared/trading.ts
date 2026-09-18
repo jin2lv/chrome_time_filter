@@ -11,13 +11,15 @@ export interface DayRange {
   end: number
 }
 
-function startOfDay(date: Date): number {
+/** 当日 00:00:00.000 */
+export function startOfDay(date: Date): number {
   const value = new Date(date)
   value.setHours(0, 0, 0, 0)
   return value.getTime()
 }
 
-function endOfDay(date: Date): number {
+/** 当日 23:59:59.999 */
+export function endOfDay(date: Date): number {
   const value = new Date(date)
   value.setHours(23, 59, 59, 999)
   return value.getTime()

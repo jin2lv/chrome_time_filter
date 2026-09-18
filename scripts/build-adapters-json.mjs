@@ -13,14 +13,23 @@
  * 用法：node scripts/build-adapters-json.mjs [--version 1.0.1]
  */
 import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
 
-const SOURCES = ['xueqiu.json', 'ths.json', 'jisilu.json', 'eastmoney-news.json']
+// 自动收录 src/adapters 下全部适配包 JSON（新增平台只需放入文件，无需维护第二份清单）。
+// 输出顺序：已知平台按既有发布顺序，新增文件按文件名排序追加，避免无意义的重排 diff。
+const ALL_SOURCES = new Set(
+  readdirSync(join(root, 'src/adapters')).filter((file) => file.endsWith('.json')),
+)
+const PREFERRED_ORDER = ['xueqiu.json', 'ths.json', 'jisilu.json', 'eastmoney-news.json']
+const SOURCES = [
+  ...PREFERRED_ORDER.filter((file) => ALL_SOURCES.has(file)),
+  ...[...ALL_SOURCES].filter((file) => !PREFERRED_ORDER.includes(file)).sort(),
+]
 const DEFAULT_VERSION = '1.0.0'
 
 const versionArgIndex = process.argv.indexOf('--version')

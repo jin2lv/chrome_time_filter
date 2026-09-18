@@ -1,9 +1,9 @@
 import assert from 'node:assert'
-import { JSDOM } from 'jsdom'
 import { VirtualPaginationController, type PostDecision } from '../../src/content/virtual-pagination'
 import type { ScanProgress } from '../../src/shared/types'
+import { setupDom } from '../helpers/dom-env'
 
-const dom = new JSDOM(`
+const dom = setupDom(`
   <main class="stock-timeline">
     <div class="status-list"></div>
     <div class="pagination">
@@ -12,14 +12,6 @@ const dom = new JSDOM(`
     </div>
   </main>
 `, { url: 'https://xueqiu.com/S/SZ300142' })
-
-Object.assign(globalThis, {
-  window: dom.window,
-  document: dom.window.document,
-  HTMLElement: dom.window.HTMLElement,
-  Element: dom.window.Element,
-  MutationObserver: dom.window.MutationObserver,
-})
 
 const pages = [
   [

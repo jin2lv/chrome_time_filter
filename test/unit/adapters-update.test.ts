@@ -7,23 +7,13 @@
  * - updateAdapters：远程新版本→更新；旧版本→跳过；非法格式→丢弃；网络失败→静默降级；开关关闭→跳过
  * - AdapterManager.loadRemoteFromStorage 加载 storage 远程包
  */
-import { JSDOM } from 'jsdom'
 import { createHash } from 'node:crypto'
 import { compareVersions } from '../../src/adapters'
+import { check, finish } from '../helpers/check'
+import { createMemoryStorage } from '../helpers/chrome-mock'
+import { setupDom } from '../helpers/dom-env'
 
-const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://xueqiu.com/' })
-Object.assign(globalThis, { window: dom.window, document: dom.window.document })
-
-let pass = 0
-function check(name: string, cond: boolean, detail = ''): void {
-  if (cond) {
-    pass++
-    console.log(`  ✅ ${name}`)
-  } else {
-    console.log(`  ❌ ${name} ${detail}`)
-    process.exitCode = 1
-  }
-}
+setupDom('<!doctype html><html><body></body></html>', { url: 'http://xueqiu.com/' })
 
 // ---------- 1. compareVersions ----------
 check('0.9.1 < 0.10.0', compareVersions('0.9.1', '0.10.0') === -1)
@@ -34,7 +24,8 @@ console.log('✓ compareVersions')
 
 // ---------- 2. updateAdapters 流程 ----------
 // 构造 chrome mock（覆盖 SW 顶层引用的 API）
-const storageMap = new Map<string, unknown>()
+const storage = createMemoryStorage()
+const storageMap = storage.map
 const mockFetch = (globalThis as Record<string, unknown>).fetch
 const sendMessages: unknown[] = []
 const alarmsCreated: unknown[] = []
@@ -77,21 +68,7 @@ let removedListener: ((removed: { origins: string[] }) => void) | null = null
   },
   commands: { onCommand: { addListener: () => {} } },
   storage: {
-    local: {
-      get: async (keys?: string | string[] | null) => {
-        if (keys === null || keys === undefined) return Object.fromEntries(storageMap)
-        const ks = Array.isArray(keys) ? keys : [keys as string]
-        const out: Record<string, unknown> = {}
-        for (const k of ks) if (storageMap.has(k)) out[k] = storageMap.get(k)
-        return out
-      },
-      set: async (items: Record<string, unknown>) => {
-        for (const [k, v] of Object.entries(items)) storageMap.set(k, v)
-      },
-      remove: async (keys: string | string[]) => {
-        for (const k of Array.isArray(keys) ? keys : [keys]) storageMap.delete(k)
-      },
-    },
+    local: storage.local,
     onChanged: { addListener: () => {} },
   },
   tabs: {
@@ -258,4 +235,4 @@ check('撤销后注销已注册的内容脚本', unregistered.length > 0, JSON.s
 // 恢复 fetch
 ;(globalThis as Record<string, unknown>).fetch = mockFetch
 
-console.log(`\n适配包热更新测试完成: ${pass} 项通过`)
+finish('适配包热更新测试完成')

@@ -20,14 +20,9 @@ cpSync(src, dst, { recursive: true })
 
 const mfPath = resolve(dst, 'manifest.json')
 const mf = JSON.parse(readFileSync(mfPath, 'utf-8'))
-// 测试构建：所有目标平台 host_permissions 预授予，避免按需授权弹窗阻塞自动化
-mf.host_permissions = [
-  '*://xueqiu.com/*',
-  '*://t.10jqka.com.cn/*',
-  '*://finance.eastmoney.com/*',
-  '*://jisilu.cn/*',
-  '*://www.jisilu.cn/*',
-]
+// 测试构建：所有目标平台 host_permissions 预授予，避免按需授权弹窗阻塞自动化。
+// origin 清单直接取自 manifest 的 optional_host_permissions，与构建配置单源。
+mf.host_permissions = mf.optional_host_permissions ?? []
 // 测试构建标识，避免误加载到正式环境
 mf.name = mf.name + ' (test)'
 // unpacked 加载时 key 字段会引发 manifest 校验异常（id 与路径不符），测试构建移除

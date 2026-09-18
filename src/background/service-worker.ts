@@ -8,7 +8,7 @@
  * - (P2) 快捷键、适配包定时更新
  */
 import type { TimeSettings } from '../shared/types'
-import { AdapterManager, compareVersions } from '../adapters'
+import { AdapterManager, compareVersions, SUPPORTED_ORIGINS } from '../adapters'
 import { validateAdapter } from '../adapters/schema'
 import {
   clearRemoteAdapter,
@@ -17,6 +17,7 @@ import {
   getRemoteAdapter,
   setRemoteAdapter,
 } from '../shared/storage'
+import { CONTENT_SCRIPT_ID, getContentScriptJs } from '../shared/registration'
 import type { Adapter } from '../shared/types'
 
 const TIME_SETTINGS_PREFIX = 'timeSettings.'
@@ -38,28 +39,16 @@ const REMOTE_CHECKSUM_URL = `${REMOTE_ADAPTERS_URL}.sha256`
 const ADAPTERS_ALARM = 'adapters-update'
 const ADAPTERS_INTERVAL_MINUTES = 12 * 60 // 每 12h
 
-/** 目标平台域名（必须与 optional_host_permissions / web_accessible_resources 严格保持同步） */
-const TARGET_MATCHES = [
-  '*://xueqiu.com/*',
-  '*://t.10jqka.com.cn/*',
-  '*://finance.eastmoney.com/*',
-  '*://jisilu.cn/*',
-  '*://www.jisilu.cn/*',
-]
-
-const CONTENT_SCRIPT_ID = 'tm-main'
+/**
+ * 目标平台域名：由内置适配包派生（见 src/adapters/index.ts 的 SUPPORTED_ORIGINS）。
+ * manifest 的 optional_host_permissions 与 web_accessible_resources 在 vite.config.ts
+ * 用同一份 SITE_ORIGINS 声明——新增平台时更新适配包注册与 vite.config 两处即可。
+ */
+const TARGET_MATCHES = SUPPORTED_ORIGINS
 
 /**
- * 读取 content script 注入文件（CRXJS 产物为 loader，路径带 hash）。
- * 从 manifest 读取以免疫构建 hash 变化；loader 内部动态 import 实际代码。
+ * 注册（或确保已注册）content script；host 授权后才实际注入
  */
-function getContentScriptJs(): string[] {
-  const manifest = chrome.runtime.getManifest()
-  const js = manifest.content_scripts?.[0]?.js
-  return js && js.length > 0 ? js : []
-}
-
-/** 注册（或确保已注册）content script；host 授权后才实际注入 */
 export async function ensureContentScriptRegistered(): Promise<void> {
   try {
     const matches: string[] = []
@@ -114,9 +103,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   await chrome.alarms.create(ADAPTERS_ALARM, { periodInMinutes: ADAPTERS_INTERVAL_MINUTES })
   if (details.reason === 'install') {
     void updateAdapters()
-  }
-  // P1-7：仅首次安装自动打开引导页（更新时弹窗会打扰现有用户）
-  if (details.reason === 'install') {
+    // P1-7：仅首次安装自动打开引导页（更新时弹窗会打扰现有用户）
     console.log('[时光机] 首次安装，打开引导页')
     chrome.tabs
       .create({ url: chrome.runtime.getURL('welcome.html') })

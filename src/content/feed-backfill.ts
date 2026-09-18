@@ -272,7 +272,7 @@ export class FeedBackfillController {
     const view = el.ownerDocument.defaultView
     const style = view?.getComputedStyle(el)
     if (style && (style.display === 'none' || style.visibility === 'hidden')) return false
-    return typeof (el as HTMLButtonElement).click === 'function' || el.tagName === 'A'
+    return true
   }
 
   private clickLoadMore(): void {

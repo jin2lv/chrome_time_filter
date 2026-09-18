@@ -53,20 +53,17 @@ class AdapterManagerImpl {
   }
 
   /** (P2-5) 覆盖远程适配包：批量校验，非法条目丢弃 */
-  setRemoteAdapters(pkgs: Adapter[]): { accepted: number; rejected: number } {
+  setRemoteAdapters(pkgs: Adapter[]): void {
     const accepted: Adapter[] = []
-    let rejected = 0
     for (const pkg of pkgs) {
       const errs = validateAdapter(pkg)
       if (errs) {
-        rejected++
         console.warn('[时光机] 远程适配包校验失败，已丢弃:', errs)
       } else {
         accepted.push(pkg)
       }
     }
     this.remoteAdapters = accepted
-    return { accepted: accepted.length, rejected }
   }
 
   /** (P2-5) content script 启动时从 storage 加载已更新的远程适配包 */

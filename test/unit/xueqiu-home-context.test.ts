@@ -1,7 +1,7 @@
 import assert from 'node:assert'
-import { JSDOM } from 'jsdom'
+import { setupDom } from '../helpers/dom-env'
 
-const dom = new JSDOM(`
+const dom = setupDom(`
   <nav class="home-timeline-tabs"><a class="active">关注</a><a>基金</a><a>7x24</a></nav>
   <nav class="timeline__tab__tags"><a class="active">全部</a><a>只看原发</a></nav>
   <main class="status-list">
@@ -9,16 +9,6 @@ const dom = new JSDOM(`
     <article class="timeline__item" id="follow-old"><a class="date-and-source">5小时前</a></article>
   </main>
 `, { url: 'https://xueqiu.com/' })
-
-Object.assign(globalThis, {
-  window: dom.window,
-  document: dom.window.document,
-  location: dom.window.location,
-  MutationObserver: dom.window.MutationObserver,
-  HTMLElement: dom.window.HTMLElement,
-  Element: dom.window.Element,
-  Event: dom.window.Event,
-})
 
 const storage = new Map<string, unknown>([
   ['timeSettings.xueqiu.com', {
