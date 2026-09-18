@@ -46,7 +46,8 @@
   - 第一批（P2-21 引擎前置能力）：未新增/未改动平台适配包，`adapters.json` 无变化故未重发。新增离线用例 `year-inference` / `adapter-pages` / `url-pagination` / `platform-fixtures` / `content-year-inference`；平台 DOM fixture 4 份（集思录分类列表 / guba 个股吧 / guba 基金吧总版 / 天天基金详情内嵌吧帖）。
   - 第二批（集思录适配包 v0.2.0，真实浏览器取证驱动）：新增 `jisilu-topic.html` fixture，`platform-fixtures.test.ts` 补详情页断言；`sites-panel.test.ts` 改为断言「纯列表平台也有列表页能力行」与「评论行统一按已加载口径」；`adapters.json` 升至 v1.1.0（**待推送**，见 §11）。
   - 第三批（guba 列表渲染后取证 + 年份推断修正）：`inferYearFor` 的异常行改为重对齐游标（guba 真实 85 行实测覆盖率 6% → 99%），`guba-stock-list.html` 按**渲染后 DOM** 重取（原服务端 HTML 版会误导：缺 JS 补的 `mod_time`/`pub_time`、缺分页链接、且当时行内还有 `data-postid`）；`adapters.json` 同版本重生成（sha256 更新）。
-  - 第四批（guba + 天天基金适配包，真实浏览器取证驱动）：新增 `src/adapters/guba.json`（3 个页面类型条目）与 `fund.json`；新增测试 `guba-fund-adapter.test.ts`（23 个文件）；`platform-fixtures.test.ts` 改为直接断言**已发布**适配包配置；`sites-panel.test.ts` 平台条目数 4 → 8、origin 5 → 7；`vite.config.ts` 的 `SITE_ORIGINS` 增加 guba/fund 两个 origin；`adapters.json` 升至 v1.2.0（**待推送**，见 §11）。
+  - 第四批（guba + 天天基金适配包，真实浏览器取证驱动）：新增 `src/adapters/guba.json`（3 个页面类型条目）与 `fund.json`；新增测试 `guba-fund-adapter.test.ts`（23 个文件）；`platform-fixtures.test.ts` 改为直接断言**已发布**适配包配置；`sites-panel.test.ts` 平台条目数 4 → 8、origin 5 → 7；`vite.config.ts` 的 `SITE_ORIGINS` 增加 guba/fund 两个 origin；`adapters.json` 升至 v1.2.0 并已推送 + purge（见 §11）。
+  - 第五批（设置页同域多条目归组）：`options/main.ts` 按 origin 集合归组（guba 3 条目 → 1 行，授权/重置按钮不再重复），页面类型表按条目名前缀逐条列出；新增 `options-sites.test.ts`（24 个文件，含授权/重置交互与单条目不回归断言）。
 
 ## 1. 安装、引导与基础状态
 
@@ -158,7 +159,8 @@
 - [ ] 应急停用：远程包 `disabled: true` → 回退内置 + 广播（自动化已覆盖 2026-09-09）
 - [ ] 远程版本递增的设备侧落地：等下一个 12h alarm 周期后读 `adapters.remote.version`
 - 纪律：远程包会遮挡更新的内置包 → 改内置包后必须 `npm run adapters:build` → 提交 → 推送 → purge CDN（详见 `AGENTS.md`）
-- [ ] **待推送**：集思录适配包 v0.2.0 已合入 `adapters.json` v1.1.0（本地已生成，sha256 随文件更新），但**尚未提交/推送**。在推送前，CDN 上的 v1.0.1（含旧集思录适配包）会持续覆盖较新的内置包。
+- [x] 2026-09-18 发布 v1.2.0（含集思录 v0.2.0 + `guba.json` + `fund.json`）：`git push origin main` → purge `adapters.json` 与 `.sha256`（均返回 `status: finished`）→ 拉取 CDN 内容比对，version=1.2.0、sha256 与本地发布产物一致 ✅
+- [ ] 设备侧落地复核：下一个 12h alarm 周期后读 `adapters.remote.version` 应为 1.2.0（商店更新不会立即拉取）
 
 ## 12. 性能（P1-4）
 

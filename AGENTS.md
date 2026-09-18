@@ -15,7 +15,7 @@
 ## 验证命令（顺序执行）
 
 ```bash
-npm test                # 唯一测试入口：package.json 中硬编码 23 个 tsx 文件
+npm test                # 唯一测试入口：package.json 中硬编码 24 个 tsx 文件
 npx tsc --noEmit        # 类型检查（tsconfig include 只含 src/，test/ 不参与检查）
 npm run build           # 产物 dist/（CRXJS loader + hash 文件名）
 git diff --check
@@ -37,7 +37,7 @@ git diff --check
 
 - **按需授权模型**：manifest 的 `content_scripts` 只有 `*://localhost/*` 占位（Chrome 不允许空数组）。真实注入由 background 用 `chrome.scripting.registerContentScripts` 动态注册（id `tm-main`，常量与 loader 读取见 `src/shared/registration.ts`）。平台清单两处：`vite.config.ts` 的 `SITE_ORIGINS`（`optional_host_permissions` 与 `web_accessible_resources.matches` 共用同一常量）与 `src/adapters/index.ts` 的内置适配包注册；background 的 `TARGET_MATCHES` 由适配包派生的 `SUPPORTED_ORIGINS` 自动同步。添加新平台 = 新增适配包 JSON + 注册（`src/adapters/index.ts`）+ 更新 `SITE_ORIGINS`。
 - **适配包 = 数据驱动 JSON**（内置 6 份：`xueqiu.json` v0.4.1 / `ths.json` / `jisilu.json` v0.2.0 / `guba.json` v0.1.0（3 个页面类型条目）/ `fund.json` v0.1.0 / `eastmoney-news.json` v0.1.0）：新增平台时写 JSON 并通过 `validateAdapter`（手写校验，`src/adapters/schema.ts`），改字段需同步 schema、`src/shared/types.ts` 的 `PlatformAdapter` 类型、content script 消费处及对应测试。改动内置适配包后必须 `npm run adapters:build -- --version <递增>` 重生成 `adapters.json`（`sites-panel.test.ts` 会断言两者同步）；新增平台还要在 `vite.config.ts` 的 `SITE_ORIGINS` 加 origin、在 `src/adapters/index.ts` 注册。
-- **一个域名可有多个页面类型条目**（P2-21 前置能力）：`PlatformAdapter.active_paths` 隔离，`AdapterManager.getAdapterFor(domain, pathname)` 取路径命中条目（无 `active_paths` 的条目作为兜底，未命中返回 null → 内容脚本静默退出）；**发布脚本 `build-adapters-json.mjs` 要求同域多条目的每一条都必须声明 `active_paths`**，否则拒绝出包。新增平台适配若同域有两种模板/两种时间语义（如 guba 个股吧 vs 基金吧总版、「全部」的回复时间 vs 「最新发帖」的发帖时间），必须拆成独立条目——`timestamp.selector` 的数组是**同一时间语义**的行模板回退链，严禁用它表达语义差异。
+- **一个域名可有多个页面类型条目**（P2-21 前置能力）：`PlatformAdapter.active_paths` 隔离，`AdapterManager.getAdapterFor(domain, pathname)` 取路径命中条目（无 `active_paths` 的条目作为兜底，未命中返回 null → 内容脚本静默退出）；**发布脚本 `build-adapters-json.mjs` 要求同域多条目的每一条都必须声明 `active_paths`**，否则拒绝出包。新增平台适配若同域有两种模板/两种时间语义（如 guba 个股吧 vs 基金吧总版、「全部」的回复时间 vs 「最新发帖」的发帖时间），必须拆成独立条目——`timestamp.selector` 的数组是**同一时间语义**的行模板回退链，严禁用它表达语义差异。设置页（`src/options/main.ts`）按 origin 集合归组呈现，同域多条目合并为一行、页面类型表逐条列出（改这里时注意 `options-sites.test.ts` 的断言）。
 - **无年份时间（`MM-DD HH:mm` / `MMDD HH:mm`）由适配包 `timestamp.year_inference` 决定**：省略 = 旧行为（逐帖与当前时刻比较补当年，仅适合雪球「修改于」这类不依赖年份的场合）；`descending-list` = 按严格发帖时间倒序做序列推断（首行锚定 + 近 48h 守卫 + 月日回跳视为异常行），**异常行返回 null（默认显示）并把游标重对齐到该行**——不留神把游标卡在低水位会让其后所有正常行都被判为异常（guba 实测覆盖率 6% → 99%）；`never` = 不推断（按最后回复排序、年份不可判定的列表必须用它）。年份状态按扫描会话持有（`src/content/index.ts` 的 `yearStateFor`），`teardownFilterState` 时丢弃重建。规则与失败方向见 `src/shared/time.ts` 的 `inferYearFor`。
 - **虚拟分页有两种源页获取方式**（`virtual_pagination.source_mode`）：缺省 `click`（点击站内翻页控件 + 等列表 DOM 变化，雪球）；`url`（`page_url_pattern` 含 `{page}`，逐页 `fetch` 同源整页 + `DOMParser` 解析成离线文档，会话总从 `start_page` 重新聚合，空页/无新帖 ID 判末页）。`url` 模式不改动当前页面，因此缓存与去重跨页保持；**客户端渲染的站点不适用**（服务端 HTML 里没有帖子）。两种模式都要求 `native_pagination_selector`（用于隐藏站点分页），`next_selector`/`active_page_selector` 仅 `click` 模式必填。
 - storage keys：`timeSettings.<domain>`、`prefs`、`adapters.remote`（见 `src/shared/storage.ts`）。

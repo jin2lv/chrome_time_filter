@@ -11,7 +11,7 @@
  * - 适配包版本信息（内置包列表）
  * - 适配包自动更新开关（P2-5 使用）
  */
-import { BUILTIN_VERSIONS, SUPPORTED_ORIGINS, SUPPORTED_SITES } from '../adapters'
+import { BUILTIN_VERSIONS, SUPPORTED_ORIGINS, SUPPORTED_SITES, type SupportedSite } from '../adapters'
 import { getPrefs, getTimeSettings, removeTimeSettings, setPrefs } from '../shared/storage'
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -128,9 +128,36 @@ async function removeOrigins(origins: string[]): Promise<boolean> {
   }
 }
 
+/** 同一 origin 集合的多个页面类型条目（同域多页面类型）归为一个授权单元 */
+interface SiteGroup {
+  origins: string[]
+  domains: string[]
+  entries: SupportedSite[]
+}
+
+/**
+ * 按 origin 集合归组：一个域名可有多个页面类型条目（如 guba 的全部/最新发帖/基金吧总版），
+ * 它们共享同一份 host 授权与同一份 `timeSettings.<domain>`，必须作为一行呈现——
+ * 否则会出现多个「授权/移除」与多个「重置此站点设置」按钮操作同一份状态。
+ */
+function groupByOrigins(sites: SupportedSite[]): SiteGroup[] {
+  const groups = new Map<string, SiteGroup>()
+  for (const site of sites) {
+    const key = [...site.origins].sort().join('|')
+    const existing = groups.get(key)
+    if (existing) {
+      existing.entries.push(site)
+    } else {
+      groups.set(key, { origins: [...site.origins], domains: [...site.domains], entries: [site] })
+    }
+  }
+  return [...groups.values()]
+}
+
 /**
  * 支持站点能力矩阵（P2-20）：
  * 平台 + 授权状态 + 单站授权/撤销 + 版本/验证日期/能力摘要 + 每站时间设置记忆（摘要/重置）。
+ * 同域多页面类型条目按 origin 归为一行，页面类型在展开表里逐条列出。
  * 「授权全部金融站点」为用户主动点击的一次性申请，绝不自动调用。
  */
 async function renderSites(): Promise<void> {
@@ -139,8 +166,9 @@ async function renderSites(): Promise<void> {
   if (seq !== sitesRenderSeq) return
 
   const rows: HTMLElement[] = []
-  for (const site of SUPPORTED_SITES) {
-    const isGranted = site.origins.every((o) => granted.has(o))
+  for (const group of groupByOrigins(SUPPORTED_SITES)) {
+    const multi = group.entries.length > 1
+    const isGranted = group.origins.every((o) => granted.has(o))
     const li = document.createElement('li')
     li.className = 'site-row'
 
@@ -149,10 +177,13 @@ async function renderSites(): Promise<void> {
 
     const name = document.createElement('span')
     name.className = 'site-name'
-    name.textContent = site.name
+    // 多条目组用域名作标题（条目名各自带页面类型后缀，拼起来过长）；单条目仍用平台名
+    name.textContent = multi ? group.domains[0] : group.entries[0].name
     const domain = document.createElement('span')
     domain.className = 'site-domain'
-    domain.textContent = site.domains.join(' / ')
+    domain.textContent = multi
+      ? `${group.domains.join(' / ')} · ${group.entries.length} 个页面类型条目`
+      : group.domains.join(' / ')
 
     const status = document.createElement('span')
     status.className = `site-status ${isGranted ? 'granted' : 'not-granted'}`
@@ -163,8 +194,8 @@ async function renderSites(): Promise<void> {
     action.textContent = isGranted ? '移除' : '授权'
     action.addEventListener('click', async () => {
       const ok = isGranted
-        ? await removeOrigins(site.origins)
-        : await requestOrigins(site.origins)
+        ? await removeOrigins(group.origins)
+        : await requestOrigins(group.origins)
       if (!ok) return
       void renderSites()
     })
@@ -173,12 +204,19 @@ async function renderSites(): Promise<void> {
 
     const meta = document.createElement('div')
     meta.className = 'site-meta'
-    const verified = site.lastVerified ? `验证于 ${site.lastVerified}` : '未真机验证'
-    meta.textContent = `适配包 v${site.version} · ${verified} · 能力：${site.capabilities.join('、')}`
+    const versions = [...new Set(group.entries.map((s) => s.version))]
+    const verifiedDates = group.entries.map((s) => s.lastVerified)
+    const verifiedText = verifiedDates.every((d) => d)
+      ? `验证于 ${[...verifiedDates].sort().pop()}`
+      : verifiedDates.some((d) => d)
+        ? '部分条目已真机验证'
+        : '未真机验证'
+    const capabilities = [...new Set(group.entries.flatMap((s) => s.capabilities))]
+    meta.textContent = `适配包 v${versions.join(' / ')} · ${verifiedText} · 能力：${capabilities.join('、')}`
 
     const memory = document.createElement('div')
     memory.className = 'site-memory'
-    const primaryDomain = site.domains[0]
+    const primaryDomain = group.domains[0]
     const saved = await getTimeSettings(primaryDomain)
     if (seq !== sitesRenderSeq) return
     if (saved && (saved.cutoff !== null || saved.window)) {
@@ -198,21 +236,22 @@ async function renderSites(): Promise<void> {
     li.append(head, meta, memory)
 
     // 页面类型能力矩阵（P2-18）：列表/评论/区间/跨页/时间精度/排序完整性
-    if (site.pages.length > 0) {
+    const pages = group.entries.flatMap((s) => s.pages.map((page) => ({ entry: s.name, page })))
+    if (pages.length > 0) {
       const details = document.createElement('details')
       details.className = 'site-pages'
       const summary = document.createElement('summary')
-      summary.textContent = `页面类型能力（${site.pages.length} 类）`
+      summary.textContent = `页面类型能力（${pages.length} 类）`
       const table = document.createElement('table')
       table.className = 'pages-table'
       const thead = document.createElement('thead')
       thead.innerHTML =
         '<tr><th>页面类型</th><th>评论</th><th>区间</th><th>跨页</th><th>时间精度</th><th>排序完整性</th><th>已验证</th></tr>'
       const tbody = document.createElement('tbody')
-      for (const page of site.pages) {
+      for (const { entry, page } of pages) {
         const tr = document.createElement('tr')
         const cells = [
-          page.pageType,
+          multi ? `${entry} · ${page.pageType}` : page.pageType,
           page.comment ? '✓' : '—',
           page.interval ? '✓' : '—',
           page.crossPage ?? '仅已加载内容',
