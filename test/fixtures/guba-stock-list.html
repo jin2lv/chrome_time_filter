@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>TimeMachine DOM fixture</title></head>
+<body>
+<!-- 取证：2026-09-18 真实浏览器渲染后 DOM，https://guba.eastmoney.com/list,600519.html（「全部」视图，按 mod_time 排序）。裁剪为 table.default_list 前 4 行 + 分页控件片段。标题/昵称/计数已匿名化，含正文的 title/data-cntitle/data-rawcntitle 属性与头像图标已移除；时间文本与行结构保持渲染后原样。
+取证要点（与 2026-08-18 服务端 HTML 取证的差异，务必按渲染后 DOM 适配）：
+1) 时间单元格类名由 JS 补全为 div.update.mod_time（「全部」视图）/ div.update.pub_time（「最新发帖」f.html 视图）；服务端 HTML 里只有 div.update。因此适配包应声明回退链 ['div.update.mod_time','div.update'] 与 ['div.update.pub_time','div.update']。
+2) 渲染后行内 a 标签没有 data-postid（服务端 HTML 曾有）；普通帖的稳定 ID 只能取自 href 的 /news,{code},{postId}.html。财富号帖（data-posttype 缺省、href 指向 //caifuhao.eastmoney.com/news/...）无 postId，跨页聚合不可依赖行 ID。
+3) 列表行序不是严格时间倒序：顶部是「财富号置顶区块」（更旧），其后才是严格倒序的普通帖区块（本 fixture 第 3、4 行即区块交界）。实测 85 行中 21 行为财富号。
+4) 无年份时间（MM-DD HH:mm）的推断策略实测（85 行）：year_inference='descending-list' 在游标可重对齐时覆盖率 99%（仅区块交界 1 行不可解析）、重对齐前仅 6%；省略该字段（旧逐帖补年行为）覆盖率 100%。
+5) 分页为真实链接（整页跳转，无 AJAX）：a.nump / a.nextp → /list,{code}_{n}.html、/list,{code},f_{n}.html；站点原生翻页可用，故未启用扩展侧跨页聚合。
+6) 分类 tab（URL 即上下文）：全部 list,{code}.html / 热门 list,{code},99.html / 资讯 list,{code},1,f.html / 公告 list,{code},3,f.html / 研报 list,{code},2,f.html / 视频 list,{code},20.html / 问董秘（外部页）。
+-->
+<table class="default_list"><tbody class="listbody"><tr class="listitem"><td><div class="read">100</div></td><td><div class="reply">0</div></td><td><div class="title"><a href="//caifuhao.eastmoney.com/news/20260915070453703155990" class="PO">示例标题 1</a></div></td><td><div class="author cl"><a class="nametext fl " href="//i.eastmoney.com/100000000000000">用户1</a><span class="jvbox fl"></span></div></td><td><div class="update mod_time">09-18 08:29</div></td></tr><tr class="listitem"><td><div class="read">101</div></td><td><div class="reply">1</div></td><td><div class="title"><a href="//caifuhao.eastmoney.com/news/20260915070453703155991" class="PO">示例标题 2</a></div></td><td><div class="author cl"><a class="nametext fl " href="//i.eastmoney.com/100000000000000">用户2</a><span class="jvbox fl"></span></div></td><td><div class="update mod_time">09-17 18:17</div></td></tr><tr class="listitem"><td><div class="read">102</div></td><td><div class="reply">2</div></td><td><div class="title"><a href="/news,600519,1774936002.html" class="PO">示例标题 3</a></div></td><td><div class="author cl"><a class="nametext fl " href="//i.eastmoney.com/100000000000000">用户3</a><span class="jvbox fl"></span></div></td><td><div class="update mod_time">09-18 12:19</div></td></tr><tr class="listitem"><td><div class="read">103</div></td><td><div class="reply">3</div></td><td><div class="title"><a href="//caifuhao.eastmoney.com/news/20260915070453703155993" class="PO">示例标题 4</a></div></td><td><div class="author cl"><a class="nametext fl hasV" href="//i.eastmoney.com/100000000000000">用户4</a><span class="jvbox fl"><a class="jv" href="//i.eastmoney.com/100000000000000">用户4</a></span></div></td><td><div class="update mod_time">09-18 12:16</div></td></tr></tbody></table>
+<!-- 分页片段：a.nump 的真实外层是 li（完整 ul/容器类名未取证），href 形态为 /list,{code}_{n}.html -->
+<li class=""><a href="https://guba.eastmoney.com/list,600519_2.html" target="_self" class="nump" tracker-eventcode="gb.webggb.dbqy"><span>2</span></a></li>
+</body>
+</html>

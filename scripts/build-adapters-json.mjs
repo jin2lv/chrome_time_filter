@@ -25,7 +25,7 @@ const root = resolve(__dirname, '..')
 const ALL_SOURCES = new Set(
   readdirSync(join(root, 'src/adapters')).filter((file) => file.endsWith('.json')),
 )
-const PREFERRED_ORDER = ['xueqiu.json', 'ths.json', 'jisilu.json', 'eastmoney-news.json']
+const PREFERRED_ORDER = ['xueqiu.json', 'ths.json', 'jisilu.json', 'guba.json', 'fund.json', 'eastmoney-news.json']
 const SOURCES = [
   ...PREFERRED_ORDER.filter((file) => ALL_SOURCES.has(file)),
   ...[...ALL_SOURCES].filter((file) => !PREFERRED_ORDER.includes(file)).sort(),
@@ -55,16 +55,30 @@ for (const file of SOURCES) {
   }
 }
 
-// 域名重复检查：同一域名只能由一个平台声明（客户端按域名取最高版本包再 find 平台）
-const seen = new Map()
+// 域名重复检查：同一域名允许多个页面类型条目共存（如 guba.eastmoney.com 的个股吧与
+// 基金吧总版模板/时间语义不同），但必须**全部**用 active_paths 做路径隔离——客户端
+// getAdapterFor 按 pathname 取首个命中，无作用域的条目会让其余条目永远不可达。
+const byDomain = new Map()
 for (const platform of platforms) {
   for (const domain of platform.domains) {
-    if (seen.has(domain)) {
-      console.error(`✗ 域名重复声明: ${domain}（${seen.get(domain)} 与 ${platform.name}）`)
-      process.exit(1)
-    }
-    seen.set(domain, platform.name)
+    if (!byDomain.has(domain)) byDomain.set(domain, [])
+    byDomain.get(domain).push(platform)
   }
+}
+for (const [domain, list] of byDomain) {
+  if (list.length === 1) continue
+  const unscoped = list.filter((p) => !Array.isArray(p.active_paths) || p.active_paths.length === 0)
+  if (unscoped.length > 0) {
+    console.error(
+      `✗ 域名 ${domain} 被多个平台条目声明但缺少 active_paths 隔离：` +
+        `${list.map((p) => p.name).join('、')}（缺作用域：${unscoped.map((p) => p.name).join('、')}）`,
+    )
+    console.error('  同域多页面类型必须各自声明互不重叠的 active_paths（pathname 正则）')
+    process.exit(1)
+  }
+  console.log(
+    `  · ${domain} 由 ${list.length} 个页面类型条目共享（active_paths 隔离）：${list.map((p) => p.name).join('、')}`,
+  )
 }
 
 const aggregate = { version, platforms }

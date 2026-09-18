@@ -14,6 +14,8 @@ import { validateAdapter } from './schema'
 import xueqiuAdapter from './xueqiu.json'
 import thsAdapter from './ths.json'
 import jisiluAdapter from './jisilu.json'
+import gubaAdapter from './guba.json'
+import fundAdapter from './fund.json'
 import eastmoneyNewsAdapter from './eastmoney-news.json'
 
 /** 内置兜底适配包（随扩展打包，始终可用） */
@@ -21,6 +23,8 @@ const BUILTIN_ADAPTERS: Adapter[] = [
   xueqiuAdapter as unknown as Adapter,
   thsAdapter as unknown as Adapter,
   jisiluAdapter as unknown as Adapter,
+  gubaAdapter as unknown as Adapter,
+  fundAdapter as unknown as Adapter,
   eastmoneyNewsAdapter as unknown as Adapter,
 ]
 
@@ -29,15 +33,34 @@ class AdapterManagerImpl {
 
   /** 匹配单个平台适配包：同一域名使用版本最高的有效包 */
   getAdapter(domain: string): PlatformAdapter | null {
-    const pkg = this.getPackageFor(domain)
-    return pkg?.platforms.find((platform) =>
-      platform.domains.some((candidate) => domain === candidate || domain.endsWith('.' + candidate)),
-    ) ?? null
+    return this.matchingPlatforms(domain)[0] ?? null
   }
 
-  /** 是否存在某平台的适配包 */
+  /**
+   * 按域名 + 页面类型（pathname）匹配平台适配包（P2-21 前置能力）。
+   *
+   * 同一域名可声明多个页面类型条目（各自用 active_paths 隔离，如
+   * `guba.eastmoney.com` 的个股吧与基金吧总版模板不同、时间字段语义不同）。
+   * 命中规则：优先返回路径命中的条目；其次返回无路径作用域的兜底条目；
+   * 都没有则返回 null（该页面类型不在适配范围，内容脚本应静默退出）。
+   */
+  getAdapterFor(domain: string, pathname: string): PlatformAdapter | null {
+    const candidates = this.matchingPlatforms(domain)
+    const hit = candidates.find((platform) => matchesActivePath(platform, pathname))
+    if (hit) return hit
+    return candidates.find((platform) => !platform.active_paths?.length) ?? null
+  }
+
+  /** 是否存在某平台的适配包（域名级：任一页面类型命中即为 true） */
   hasAdapter(domain: string): boolean {
     return this.getAdapter(domain) !== null
+  }
+
+  /** 域匹配的全部平台条目（来自版本最高的匹配包） */
+  private matchingPlatforms(domain: string): PlatformAdapter[] {
+    const pkg = this.getPackageFor(domain)
+    if (!pkg) return []
+    return pkg.platforms.filter((platform) => domainMatches(platform, domain))
   }
 
   /** 适配包完整包体（供远程更新对比版本号使用） */
@@ -78,6 +101,28 @@ class AdapterManagerImpl {
 }
 
 export const AdapterManager = new AdapterManagerImpl()
+
+/** 域名匹配：等值或子域（`t.10jqka.com.cn` 命中 `10jqka.com.cn` 的条目） */
+function domainMatches(platform: PlatformAdapter, domain: string): boolean {
+  return platform.domains.some(
+    (candidate) => domain === candidate || domain.endsWith('.' + candidate),
+  )
+}
+
+/**
+ * 页面类型白名单判定：平台声明 active_paths 后，仅匹配的 pathname 启用过滤与失效检测。
+ * 非法正则视为不匹配（脏配置不得中断运行）。content script 与 AdapterManager 共用。
+ */
+export function matchesActivePath(platform: PlatformAdapter, pathname: string): boolean {
+  if (!platform.active_paths?.length) return false
+  return platform.active_paths.some((pattern) => {
+    try {
+      return new RegExp(pattern).test(pathname)
+    } catch {
+      return false
+    }
+  })
+}
 
 /** 供 popup/设置页查看内置版本号 */
 export const BUILTIN_VERSIONS: { name: string; version: string }[] = BUILTIN_ADAPTERS.map((p) => ({
@@ -134,6 +179,7 @@ function describePages(p: PlatformAdapter): SitePageCapability[] {
   const pages: SitePageCapability[] = []
   const precision =
     p.timestamp.type === 'relative' ? '相对时间（±5 分钟）' : '绝对时间（分钟级）'
+  const verified = Boolean(p.last_verified)
   if (p.feed_context) {
     const backfill = p.feed_context.backfill
     pages.push({
@@ -143,7 +189,7 @@ function describePages(p: PlatformAdapter): SitePageCapability[] {
       crossPage: backfill ? `滚动补拉（上限 ${backfill.max_screens} 屏）` : null,
       precision,
       ordering: p.feed_context.completeness === 'loaded-only' ? '仅已加载内容' : '完整',
-      verified: Boolean(p.last_verified),
+      verified,
     })
   }
   if (p.virtual_pagination) {
@@ -151,10 +197,23 @@ function describePages(p: PlatformAdapter): SitePageCapability[] {
       pageType: '个股讨论页',
       comment: false,
       interval: true,
-      crossPage: `虚拟分页（上限 ${p.virtual_pagination.max_source_pages} 原生页）`,
+      crossPage: `${p.virtual_pagination.source_mode === 'url' ? 'URL 翻页聚合' : '虚拟分页'}（上限 ${p.virtual_pagination.max_source_pages} 原生页）`,
       precision,
       ordering: '完整',
-      verified: Boolean(p.last_verified),
+      verified,
+    })
+  }
+  // 纯列表平台（既无信息流上下文也无跨页扫描）：显式给一行列表能力，
+  // 否则设置页能力矩阵会空白，与「已验证页面类型」要求不符
+  if (!p.feed_context && !p.virtual_pagination) {
+    pages.push({
+      pageType: '列表页',
+      comment: false,
+      interval: true,
+      crossPage: null,
+      precision,
+      ordering: '仅已加载内容',
+      verified,
     })
   }
   if (p.comment_selectors?.length) {
@@ -164,8 +223,10 @@ function describePages(p: PlatformAdapter): SitePageCapability[] {
       interval: true,
       crossPage: null,
       precision,
-      ordering: '完整',
-      verified: Boolean(p.last_verified),
+      // 引擎不驱动任何平台的评论分页/加载更多，只过滤 DOM 中已存在的评论：
+      // 声明「完整」会暗示已覆盖全部评论（集思录详情页即只渲染最近 99 条），故按已加载口径声明
+      ordering: '仅已加载内容',
+      verified,
     })
   }
   return pages

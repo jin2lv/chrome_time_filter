@@ -22,6 +22,24 @@ export interface TimeSettings {
 /** 时间戳解析类型 */
 export type TimestampParserType = 'absolute' | 'relative' | 'iso8601' | 'custom'
 
+/**
+ * 无年份时间（`MM-DD HH:mm` / `MMDD HH:mm`）的年份推断策略（P2-21 前置能力）。
+ *
+ * - `descending-list`：按「该列表是严格发帖时间倒序」的假设做序列推断——
+ *   以首行锚定年份（首行月日 > 今日月日 → 去年），逐行向后推进，仅在
+ *   「上一行 1 月 → 本行 12 月」时判定为跨年。首行必须落在近 48 小时内，
+ *   否则整批视为不可信（全部按无法解析处理，默认显示 + 计数，宁可不过滤也不误杀）。
+ * - `never`：不推断。无年份文本一律视为无法解析（默认显示 + 计数）。
+ *   用于按「最后回复」等非发帖时间排序、年份不可判定的列表。
+ *
+ * 省略该字段时沿用旧行为（逐帖与当前时刻比较补当年、未来回退一年），
+ * 仅适合语义上不依赖年份的场合（如雪球「修改于 MM-DD HH:mm」）。
+ */
+export type YearInferenceMode = 'descending-list' | 'never'
+
+/** 虚拟分页源页获取方式：click = 站内翻页控件（AJAX），url = 服务端整页翻页 */
+export type VirtualSourceMode = 'click' | 'url'
+
 /** 相对时间解析规则（"3小时前"、"昨天" 等） */
 export interface RelativePattern {
   regex: string
@@ -49,7 +67,15 @@ export interface PlatformAdapter {
   /** 帖子容器选择器（可多个，按优先级匹配） */
   post_selectors: string[]
   timestamp: {
-    selector: string
+    /**
+     * 时间选择器：可声明多个，按顺序取该帖子内第一个命中的元素。
+     *
+     * **回退链约束**：多个选择器必须表达同一时间语义（如同一列表里「有图/无图」
+     * 两种行模板的时间单元格、置顶行与普通行的时间单元格）。「发帖时间 vs
+     * 最后回复时间」这类**语义**差异严禁用回退链表达——否则会拿回复时间当发帖
+     * 时间判定；必须拆成不同的页面类型条目，用 active_paths 隔离。
+     */
+    selector: string | string[]
     type: TimestampParserType
     /** 绝对时间格式（dayjs 格式串），type === 'absolute' 时使用 */
     format?: string
@@ -57,6 +83,11 @@ export interface PlatformAdapter {
     patterns?: RelativePattern[]
     /** 备用：从 data 属性提取时间戳 */
     attr?: string | null
+    /**
+     * 无年份时间的年份推断策略（可选，见 YearInferenceMode）。
+     * 声明后：无年份时间按该策略处理；未声明时沿用旧行为。
+     */
+    year_inference?: YearInferenceMode
     /**
      * 日期属性（可选组合）：同花顺等平台把日期放在帖子容器 data-* 属性
      * （如 data-date="0811"），时间文本在 selector 元素内。组合后按 format 解析。
@@ -114,6 +145,22 @@ export interface PlatformAdapter {
       attr: string
     }
     source_link_selector: string
+    /**
+     * 源页获取方式（可选，P2-21 前置能力）：
+     * - 省略 / 'click'：点击站内翻页控件并等待列表 DOM 变化（雪球等 AJAX 翻页）
+     * - 'url'：按 URL 模板逐页 fetch 服务端整页（集思录、股吧等 URL 翻页平台）。
+     *   整页 fetch 不改动当前页面，因此缓存与去重可跨页保持；要求 page_url_pattern
+     *   与服务端渲染的列表（客户端渲染的站点无法用该策略，需真机另行取证）。
+     */
+    source_mode?: VirtualSourceMode
+    /**
+     * url 模式的页码 URL 模板，必须含 `{page}` 占位符（如
+     * `/home/explore/sort_type-new__category-3__page-{page}`）。相对路径按当前
+     * origin 解析；仅支持同源页面（跨源会被 CORS 拒绝，且需要额外 host 授权）。
+     */
+    page_url_pattern?: string
+    /** url 模式的起始页码（默认 1）；会话总是从起始页重新聚合 */
+    start_page?: number
     /** 列表类别/作用域的当前值；变化时重建虚拟分页会话 */
     context_selector?: string
     /** 可触发列表类别切换的控件；捕获点击时立即停止旧扫描会话 */
@@ -123,8 +170,10 @@ export interface PlatformAdapter {
     /** 站点明确表示当前类别无内容时的元素；命中后保留站点原生空状态 */
     empty_selector?: string
     native_pagination_selector: string
-    next_selector: string
-    active_page_selector: string
+    /** click 模式必填：站内「下一页」控件 */
+    next_selector?: string
+    /** click 模式必填：标识当前原生页码的元素（用于进度文案与重复页检测） */
+    active_page_selector?: string
     first_page?: {
       input_selector: string
       value: string

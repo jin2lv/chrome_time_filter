@@ -19,6 +19,8 @@ export function setupDom(html: string, options: Record<string, unknown> = {}): J
     Element: window.Element,
     Event: window.Event,
     KeyboardEvent: window.KeyboardEvent,
+    // url 模式的虚拟分页用 DOMParser 解析拉取到的整页 HTML（内容脚本里是页面全局）
+    DOMParser: window.DOMParser,
   })
   return dom
 }

@@ -9,6 +9,8 @@ const SITE_ORIGINS = [
   '*://xueqiu.com/*',
   '*://t.10jqka.com.cn/*',
   '*://finance.eastmoney.com/*',
+  '*://guba.eastmoney.com/*',
+  '*://fund.eastmoney.com/*',
   '*://jisilu.cn/*',
   '*://www.jisilu.cn/*',
 ]

@@ -1,26 +1,26 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "platforms": [
     {
       "name": "集思录",
       "domains": ["jisilu.cn", "www.jisilu.cn"],
-      "post_selectors": [
-        ".aw-question-list > .aw-item",
-        ".aw-dynamic-topic > .aw-item[id^='answer_list_']"
-      ],
+      "post_selectors": [".aw-question-list > .aw-item"],
       "timestamp": {
         "selector": "span.aw-text-color-999",
         "type": "absolute",
         "format": "YYYY-MM-DD HH:mm",
-        "extract_pattern": "(\\d{4}-\\d{2}-\\d{2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)"
+        "extract_pattern": "(\\d{4}-\\d{2}-\\d{2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)",
+        "strip_pattern": "\\s*来自.*$"
       },
-      "active_paths": ["^/category/", "^/question/", "^/home/explore/sort_type"],
+      "comment_selectors": [".aw-mod-body.aw-dynamic-topic > .aw-item[id^='answer_list_']"],
+      "comment_timestamp_selector": ".aw-dynamic-topic-meta .pull-left.aw-text-color-999",
+      "active_paths": ["^/category/\\d+/?$", "^/home/explore/sort_type-new__category-\\d+__day-\\d+__page-\\d+$", "^/question/\\d+"],
       "quick_presets": [
         { "label": "1小时前", "value": "1_hour_ago" },
         { "label": "今日0点", "value": "today_midnight" },
         { "label": "昨日0点", "value": "yesterday_midnight" }
       ],
-      "notes": "DOM 取证于 2026-08-17（无登录态，全程 200）与 2026-08-18 复核：分类主题列表 .aw-question-list > .aw-item，时间在 span.aw-text-color-999 行内文本（作者 回复 • YYYY-MM-DD HH:mm • N 次浏览），全年份绝对时间无跨年歧义；详情回复 .aw-dynamic-topic > .aw-item[id^='answer_list_'] 一次渲染，回复时间在 .aw-dynamic-topic-meta .pull-left.aw-text-color-999。分页为服务端 URL（home/explore/sort_type-*__page-N），URL 即上下文。局限：选择器为单快照样本，大帖回复分页/懒加载机制未验证；裸首页 explore 无时间戳，不启用。"
+      "notes": "2026-09-18 真机（真实浏览器渲染后 DOM）复核：分类列表 div.aw-question-list > div.aw-item（30 条/页，选择器 30/30 命中、时间提取 30/30）；时间在 span.aw-text-color-999 行内文本（「作者 回复 • YYYY-MM-DD HH:mm • N 次浏览」，全年份，无跨年歧义），需 extract_pattern 提取子串。板块：/category/3 新股、4 债券可转债、5 套利、6 其他、7 基金（本条目按 active_paths 覆盖全部板块；板块由 URL 隔离，整页加载即天然上下文隔离，无需 feed_context）。分页为服务端整页翻页 /home/explore/sort_type-new__category-{id}__day-{N}__page-{n}（新股 83 页），逐页过滤即可，未启用跨页聚合：实测 T=昨日0点 时列表首屏仍保留 26/30 条（列表按最后回复时间倒序，活跃板块首页覆盖数日），不存在「首屏全空」，故保留站点原生分页。**时间语义注意**：列表行内只有「最后回复时间」（行内无发帖时间，实测行属性仅 class，无 data-* 时间），因此列表过滤的语义是「隐藏 T 之后有新回复的主题」；主题详情的回复按各自时间过滤，用户仍能看到 T 之前的讨论内容。详情页：回复容器 .aw-mod-body.aw-dynamic-topic > .aw-item[id^=answer_list_]（实测 99/99 命中），回复时间 .aw-dynamic-topic-meta .pull-left.aw-text-color-999（文本为「YYYY-MM-DD HH:mm 来自属地」，必须带 .pull-left/span 限定，否则会命中同级 a.aw-add-comment「引用」锚点）；正文（.aw-question-detail-title 内 .aw-markitup-box）不参与过滤，post_selectors 与评论选择器均不命中它。**平台深度限制**：主题页服务端只渲染最近 99 条回复，页面内无分页/加载更多入口，?p=2 返回同一批回复 → 评论可过滤范围即这 99 条。排序视图排除：sort_type-add_time / sort_type-hot__day-30 视图的行时间同样是最后回复时间但不再按时间单调，不在 active_paths 内（静默退出）。局限：选择器为 2026-09-18 单次取证样本，未做扩展真机验收（last_verified 留空）。"
     }
   ]
 }

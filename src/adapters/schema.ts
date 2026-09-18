@@ -8,6 +8,19 @@ import type { PlatformAdapter, TimestampParserType } from '../shared/types'
 
 const TIMESTAMP_TYPES: TimestampParserType[] = ['absolute', 'relative', 'iso8601', 'custom']
 const UNITS = ['second', 'minute', 'hour', 'day', 'week'] as const
+const YEAR_INFERENCE_MODES = ['descending-list', 'never'] as const
+const VIRTUAL_SOURCE_MODES = ['click', 'url'] as const
+
+/** 非空字符串数组校验（返回错误信息或 null） */
+function checkNonEmptyStrings(value: unknown, label: string): string | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return `${label} 必须是非空字符串数组`
+  }
+  if (value.some((item) => typeof item !== 'string' || !item)) {
+    return `${label} 必须是非空字符串数组`
+  }
+  return null
+}
 
 export function validateAdapter(pkg: unknown): string[] | null {
   const errors: string[] = []
@@ -57,11 +70,22 @@ function validatePlatform(pl: PlatformAdapter): string[] {
     errs.push('缺少 timestamp')
     return errs
   }
-  if (typeof ts.selector !== 'string' || !ts.selector) {
-    errs.push('timestamp.selector 必须是非空字符串')
+  if (typeof ts.selector === 'string') {
+    if (!ts.selector) errs.push('timestamp.selector 必须是非空字符串')
+  } else {
+    // 多选择器回退链（可选）：同一行存在多种模板变体时按顺序取第一个命中的元素
+    const err = checkNonEmptyStrings(ts.selector, 'timestamp.selector')
+    if (err) errs.push(err)
   }
   if (!TIMESTAMP_TYPES.includes(ts.type)) {
     errs.push(`timestamp.type 必须是 ${TIMESTAMP_TYPES.join('/')}`)
+  }
+  // year_inference（可选）：无年份时间的年份推断策略
+  if (
+    ts.year_inference !== undefined &&
+    !YEAR_INFERENCE_MODES.includes(ts.year_inference as (typeof YEAR_INFERENCE_MODES)[number])
+  ) {
+    errs.push(`timestamp.year_inference 必须是 ${YEAR_INFERENCE_MODES.join('/')}`)
   }
   if (
     (ts.type === 'absolute' || ts.type === 'custom') &&
@@ -234,14 +258,50 @@ function validatePlatform(pl: PlatformAdapter): string[] {
         ['list_selector', virtual.list_selector],
         ['source_link_selector', virtual.source_link_selector],
         ['native_pagination_selector', virtual.native_pagination_selector],
-        ['next_selector', virtual.next_selector],
-        ['active_page_selector', virtual.active_page_selector],
       ]
       selectors.forEach(([name, value]) => {
         if (typeof value !== 'string' || !value) {
           errs.push(`virtual_pagination.${name} 必须是非空字符串`)
         }
       })
+      // 源页获取方式（可选，缺省 click）：click 需要站内翻页控件，url 需要页码 URL 模板
+      const sourceMode = virtual.source_mode ?? 'click'
+      if (!VIRTUAL_SOURCE_MODES.includes(sourceMode as (typeof VIRTUAL_SOURCE_MODES)[number])) {
+        errs.push(`virtual_pagination.source_mode 必须是 ${VIRTUAL_SOURCE_MODES.join('/')}`)
+      }
+      if (sourceMode === 'url') {
+        if (typeof virtual.page_url_pattern !== 'string' || !virtual.page_url_pattern) {
+          errs.push('virtual_pagination.page_url_pattern 必须是非空字符串（url 模式）')
+        } else if (!virtual.page_url_pattern.includes('{page}')) {
+          errs.push('virtual_pagination.page_url_pattern 必须含 {page} 占位符')
+        }
+        if (
+          virtual.start_page !== undefined &&
+          (!Number.isInteger(virtual.start_page) || virtual.start_page < 1)
+        ) {
+          errs.push('virtual_pagination.start_page 必须是正整数')
+        }
+        if (virtual.first_page !== undefined) {
+          errs.push('virtual_pagination.first_page 仅适用于 click 模式')
+        }
+        for (const name of ['next_selector', 'active_page_selector'] as const) {
+          if (virtual[name] !== undefined) {
+            errs.push(`virtual_pagination.${name} 仅适用于 click 模式`)
+          }
+        }
+      } else {
+        for (const name of ['next_selector', 'active_page_selector'] as const) {
+          const value = virtual[name]
+          if (typeof value !== 'string' || !value) {
+            errs.push(`virtual_pagination.${name} 必须是非空字符串（click 模式）`)
+          }
+        }
+        for (const name of ['page_url_pattern', 'start_page'] as const) {
+          if (virtual[name] !== undefined) {
+            errs.push(`virtual_pagination.${name} 仅适用于 url 模式`)
+          }
+        }
+      }
       if (
         virtual.context_selector !== undefined &&
         (typeof virtual.context_selector !== 'string' || !virtual.context_selector)

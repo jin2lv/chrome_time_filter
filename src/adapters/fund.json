@@ -1,0 +1,23 @@
+{
+  "version": "0.1.0",
+  "platforms": [
+    {
+      "name": "天天基金·基金详情内嵌吧帖",
+      "domains": ["fund.eastmoney.com"],
+      "active_paths": ["^/\\d{6}\\.html$"],
+      "post_selectors": [".barEssayListWrap table.popTable tbody tr:has(td.td05)"],
+      "timestamp": {
+        "selector": "td.td05",
+        "type": "absolute",
+        "format": "MM-DD HH:mm",
+        "year_inference": "descending-list"
+      },
+      "quick_presets": [
+        { "label": "1小时前", "value": "1_hour_ago" },
+        { "label": "今日0点", "value": "today_midnight" },
+        { "label": "昨日0点", "value": "yesterday_midnight" }
+      ],
+      "notes": "2026-09-18 真实浏览器（渲染后 DOM）取证，免登录、无滑块。容器 .barEssayListWrap > table.popTable > tbody > tr，用 :has(td.td05) 排除表头行（<tr><th>…，否则会多出 1 行「无法解析」计数）。列结构：td01 阅读数、td02 回复数、td03 标题、td04 作者、td05 最新更新时间（MM-DD HH:mm 无年份）。时间严格倒序、首行新鲜（实测 21 小时前）→ year_inference=descending-list。**上下文注意**：行内混有不同吧来源（实测 8 个吧代码：of018957、zssh000001、of000001、of001638、of008327、of028647、of100018、of027762），即该内嵌列表按基金/指数吧聚合，不能假设单一吧上下文；链接为绝对地址 http://fund.eastmoney.com/ba/news,{code},{id}.html。列表固定约 20 条、无分页。页面白名单仅 /{6位数字}.html（基金详情），其余 fund.eastmoney.com 页面类型未取证、静默退出；单基金吧 list,of{code}.html 属登录态旧模板，未纳入本期。"
+    }
+  ]
+}

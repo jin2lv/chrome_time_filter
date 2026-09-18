@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
+  "version": "1.2.0",
   "platforms": [
     {
       "name": "雪球",
@@ -175,19 +175,23 @@
         "www.jisilu.cn"
       ],
       "post_selectors": [
-        ".aw-question-list > .aw-item",
-        ".aw-dynamic-topic > .aw-item[id^='answer_list_']"
+        ".aw-question-list > .aw-item"
       ],
       "timestamp": {
         "selector": "span.aw-text-color-999",
         "type": "absolute",
         "format": "YYYY-MM-DD HH:mm",
-        "extract_pattern": "(\\d{4}-\\d{2}-\\d{2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)"
+        "extract_pattern": "(\\d{4}-\\d{2}-\\d{2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)",
+        "strip_pattern": "\\s*来自.*$"
       },
+      "comment_selectors": [
+        ".aw-mod-body.aw-dynamic-topic > .aw-item[id^='answer_list_']"
+      ],
+      "comment_timestamp_selector": ".aw-dynamic-topic-meta .pull-left.aw-text-color-999",
       "active_paths": [
-        "^/category/",
-        "^/question/",
-        "^/home/explore/sort_type"
+        "^/category/\\d+/?$",
+        "^/home/explore/sort_type-new__category-\\d+__day-\\d+__page-\\d+$",
+        "^/question/\\d+"
       ],
       "quick_presets": [
         {
@@ -203,7 +207,150 @@
           "value": "yesterday_midnight"
         }
       ],
-      "notes": "DOM 取证于 2026-08-17（无登录态，全程 200）与 2026-08-18 复核：分类主题列表 .aw-question-list > .aw-item，时间在 span.aw-text-color-999 行内文本（作者 回复 • YYYY-MM-DD HH:mm • N 次浏览），全年份绝对时间无跨年歧义；详情回复 .aw-dynamic-topic > .aw-item[id^='answer_list_'] 一次渲染，回复时间在 .aw-dynamic-topic-meta .pull-left.aw-text-color-999。分页为服务端 URL（home/explore/sort_type-*__page-N），URL 即上下文。局限：选择器为单快照样本，大帖回复分页/懒加载机制未验证；裸首页 explore 无时间戳，不启用。"
+      "notes": "2026-09-18 真机（真实浏览器渲染后 DOM）复核：分类列表 div.aw-question-list > div.aw-item（30 条/页，选择器 30/30 命中、时间提取 30/30）；时间在 span.aw-text-color-999 行内文本（「作者 回复 • YYYY-MM-DD HH:mm • N 次浏览」，全年份，无跨年歧义），需 extract_pattern 提取子串。板块：/category/3 新股、4 债券可转债、5 套利、6 其他、7 基金（本条目按 active_paths 覆盖全部板块；板块由 URL 隔离，整页加载即天然上下文隔离，无需 feed_context）。分页为服务端整页翻页 /home/explore/sort_type-new__category-{id}__day-{N}__page-{n}（新股 83 页），逐页过滤即可，未启用跨页聚合：实测 T=昨日0点 时列表首屏仍保留 26/30 条（列表按最后回复时间倒序，活跃板块首页覆盖数日），不存在「首屏全空」，故保留站点原生分页。**时间语义注意**：列表行内只有「最后回复时间」（行内无发帖时间，实测行属性仅 class，无 data-* 时间），因此列表过滤的语义是「隐藏 T 之后有新回复的主题」；主题详情的回复按各自时间过滤，用户仍能看到 T 之前的讨论内容。详情页：回复容器 .aw-mod-body.aw-dynamic-topic > .aw-item[id^=answer_list_]（实测 99/99 命中），回复时间 .aw-dynamic-topic-meta .pull-left.aw-text-color-999（文本为「YYYY-MM-DD HH:mm 来自属地」，必须带 .pull-left/span 限定，否则会命中同级 a.aw-add-comment「引用」锚点）；正文（.aw-question-detail-title 内 .aw-markitup-box）不参与过滤，post_selectors 与评论选择器均不命中它。**平台深度限制**：主题页服务端只渲染最近 99 条回复，页面内无分页/加载更多入口，?p=2 返回同一批回复 → 评论可过滤范围即这 99 条。排序视图排除：sort_type-add_time / sort_type-hot__day-30 视图的行时间同样是最后回复时间但不再按时间单调，不在 active_paths 内（静默退出）。局限：选择器为 2026-09-18 单次取证样本，未做扩展真机验收（last_verified 留空）。"
+    },
+    {
+      "name": "东方财富股吧·全部与热门",
+      "domains": [
+        "guba.eastmoney.com"
+      ],
+      "active_paths": [
+        "^/list,\\d+(_\\d+)?\\.html$",
+        "^/list,\\d+,99(_\\d+)?\\.html$",
+        "^/news,\\d+,\\d+(_\\d+)?(,[a-z0-9]+)?\\.html$"
+      ],
+      "post_selectors": [
+        "table.default_list tbody tr.listitem"
+      ],
+      "timestamp": {
+        "selector": [
+          "div.update.mod_time",
+          "div.update"
+        ],
+        "type": "absolute",
+        "format": "MM-DD HH:mm",
+        "year_inference": "descending-list"
+      },
+      "comment_selectors": [
+        "#replylist .reply_item[data-reply_id]"
+      ],
+      "comment_timestamp_selector": ".pubtime",
+      "quick_presets": [
+        {
+          "label": "1小时前",
+          "value": "1_hour_ago"
+        },
+        {
+          "label": "今日0点",
+          "value": "today_midnight"
+        },
+        {
+          "label": "昨日0点",
+          "value": "yesterday_midnight"
+        }
+      ],
+      "notes": "2026-09-18 真实浏览器（渲染后 DOM）取证，匿名访问无障碍、无滑块。列表：table.default_list > tbody > tr.listitem（80~85 行/页），时间 td > div.update.mod_time（类名由 JS 补全，服务端 HTML 只有 div.update，故声明回退链），格式 MM-DD HH:mm 无年份。**时间语义**：行内只有「最后回复时间」（渲染后行内 a 也没有 data-postid，普通帖 ID 只能在 href 的 /news,{code},{postId}.html，财富号帖 href 指向 //caifuhao.eastmoney.com/news/... 无 postId），故过滤语义是「隐藏 T 之后有新回复的主题」。行序：第 1 页顶部前置「财富号推荐区块」（时间更旧），其后才是严格倒序的普通帖区块（第 2 页起完全单调，85 行中 21 行为财富号，热门视图 list,{code},99.html 实测全为财富号）。year_inference=descending-list 实测 85 行覆盖率 99%（推荐区块交界 1 行按异常行处理：默认显示 + 计数，不误杀，随后游标重对齐恢复）。分页为真实链接整页跳转（/list,{code}_{n}.html、/list,{code},99_{n}.html），站点原生翻页可用，未启用扩展侧跨页聚合。详情页（active_paths 第三条）：正文 #newscontent 与 .time（YYYY-MM-DD HH:mm:ss）不参与过滤；评论容器 #replylist .reply_item[data-reply_id]（实测 48 条 = 「热门评论」区块 5 条 + 最新评论，热门区块前置故行序非单调，但评论按各自时间判定、不依赖行序），时间 .pubtime 全年份（无需年份推断），属地 .ipfrom 不参与解析；评论分页为 URL 翻页 /news,{code},{id}_{n}.html#allReplyList，排序控件 最新（默认）/ 最热（,d.html）/ 最早（,z.html）/ 只看作者（,{uid}.html）均已在 active_paths 内。"
+    },
+    {
+      "name": "东方财富股吧·最新发帖",
+      "domains": [
+        "guba.eastmoney.com"
+      ],
+      "active_paths": [
+        "^/list,\\d+(,\\d+)?,f(_\\d+)?\\.html$"
+      ],
+      "post_selectors": [
+        "table.default_list tbody tr.listitem"
+      ],
+      "timestamp": {
+        "selector": [
+          "div.update.pub_time",
+          "div.update"
+        ],
+        "type": "absolute",
+        "format": "MM-DD HH:mm"
+      },
+      "quick_presets": [
+        {
+          "label": "1小时前",
+          "value": "1_hour_ago"
+        },
+        {
+          "label": "今日0点",
+          "value": "today_midnight"
+        },
+        {
+          "label": "昨日0点",
+          "value": "yesterday_midnight"
+        }
+      ],
+      "notes": "2026-09-18 渲染后 DOM 取证。active_paths 覆盖 最新发帖 /list,{code},f.html 与分类视图（资讯 ,1,f / 研报 ,2,f / 公告 ,3,f）及其 _n 分页。**时间语义**：div.update.pub_time 是发帖时间（JS 补类名，服务端 HTML 只有 div.update），与「全部与热门」条目按最后回复时间过滤的语义不同，故拆成独立条目（选择器回退链严禁表达语义差异）。**不声明 year_inference 的原因（实测）**：该视图首行常是推荐区块中的旧帖（实测首位为 3 天前的财富号帖），descending-list 的「首行须在近 48h 内」守卫会整批放弃推断（0% 覆盖 → 该页完全不过滤）；改用回退的旧逐帖补年行为实测 100% 可解析。残余风险：超过约 12 个月的帖子会被补成今年（在常用预设截止时间下结论通常不变；区间模式下该行可能落到区间外而隐藏），`docs/platform-recon.md` §3 记录了该口径与实测数字。无评论层。"
+    },
+    {
+      "name": "东方财富基金吧总版",
+      "domains": [
+        "guba.eastmoney.com"
+      ],
+      "active_paths": [
+        "^/jj(_\\d+)?\\.html$"
+      ],
+      "post_selectors": [
+        "div.balist > ul.newlist > li"
+      ],
+      "timestamp": {
+        "selector": "cite.last",
+        "type": "absolute",
+        "format": "MM-DD HH:mm",
+        "year_inference": "descending-list"
+      },
+      "quick_presets": [
+        {
+          "label": "1小时前",
+          "value": "1_hour_ago"
+        },
+        {
+          "label": "今日0点",
+          "value": "today_midnight"
+        },
+        {
+          "label": "昨日0点",
+          "value": "yesterday_midnight"
+        }
+      ],
+      "notes": "2026-09-18 渲染后 DOM 取证（guba.eastmoney.com/jj.html，天天基金场景的基金吧总版）。容器 div.balist > ul.newlist > li（80 行/页），行内有发帖时间 cite.date 与末回复时间 cite.last（均 MM-DD HH:mm 无年份），吧类型前缀 a.balink（of{6位} 开放基金、sh/sz 场内、jjdt 动态、zg{id} 公司）。**取 cite.last 的原因（实测）**：该列表按末回复排序，发帖时间 cite.date 非单调且首行为置顶旧帖（实测 20 天前）→ 用 cite.date + descending-list 会触发 48h 守卫整批放弃（0% 覆盖）；改用排序键 cite.last 后 80 行覆盖率 99%（前 2 行是 em.settop 置顶活动帖，按异常行处理：默认显示 + 计数，游标重对齐后恢复）。语义与「全部与热门」条目一致：隐藏 T 之后有新回复的主题。分页为原生链接 jj_{n}.html。"
+    },
+    {
+      "name": "天天基金·基金详情内嵌吧帖",
+      "domains": [
+        "fund.eastmoney.com"
+      ],
+      "active_paths": [
+        "^/\\d{6}\\.html$"
+      ],
+      "post_selectors": [
+        ".barEssayListWrap table.popTable tbody tr:has(td.td05)"
+      ],
+      "timestamp": {
+        "selector": "td.td05",
+        "type": "absolute",
+        "format": "MM-DD HH:mm",
+        "year_inference": "descending-list"
+      },
+      "quick_presets": [
+        {
+          "label": "1小时前",
+          "value": "1_hour_ago"
+        },
+        {
+          "label": "今日0点",
+          "value": "today_midnight"
+        },
+        {
+          "label": "昨日0点",
+          "value": "yesterday_midnight"
+        }
+      ],
+      "notes": "2026-09-18 真实浏览器（渲染后 DOM）取证，免登录、无滑块。容器 .barEssayListWrap > table.popTable > tbody > tr，用 :has(td.td05) 排除表头行（<tr><th>…，否则会多出 1 行「无法解析」计数）。列结构：td01 阅读数、td02 回复数、td03 标题、td04 作者、td05 最新更新时间（MM-DD HH:mm 无年份）。时间严格倒序、首行新鲜（实测 21 小时前）→ year_inference=descending-list。**上下文注意**：行内混有不同吧来源（实测 8 个吧代码：of018957、zssh000001、of000001、of001638、of008327、of028647、of100018、of027762），即该内嵌列表按基金/指数吧聚合，不能假设单一吧上下文；链接为绝对地址 http://fund.eastmoney.com/ba/news,{code},{id}.html。列表固定约 20 条、无分页。页面白名单仅 /{6位数字}.html（基金详情），其余 fund.eastmoney.com 页面类型未取证、静默退出；单基金吧 list,of{code}.html 属登录态旧模板，未纳入本期。"
     },
     {
       "name": "东方财富资讯",

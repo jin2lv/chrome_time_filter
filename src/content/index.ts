@@ -21,7 +21,12 @@ import {
 } from './virtual-pagination'
 import { FeedBackfillController } from './feed-backfill'
 import { extractDomain, getPrefs, getTimeSettings } from '../shared/storage'
-import { extractTimestampText, parseTimestamp } from '../shared/time'
+import {
+  createYearInferenceState,
+  extractTimestampText,
+  parseTimestamp,
+  type YearInferenceState,
+} from '../shared/time'
 import type {
   ContentCompleteness,
   ContentState,
@@ -56,9 +61,27 @@ let feedBackfill: FeedBackfillController | null = null
 let completeness: ContentCompleteness = 'complete'
 let diagnostics: TimeDiagnostic[] = []
 let scanProgress: ScanProgress | undefined
+/**
+ * 无年份时间（MM-DD / MMDD）的年份推断状态，按扫描会话共享：帖子与评论各自一条序列，
+ * 均在 teardownFilterState（重扫/停止）时丢弃重建。适配包未声明 year_inference 时为 null。
+ */
+let postYearState: YearInferenceState | null = null
+let commentYearState: YearInferenceState | null = null
 
 const FILTERED_FLAG = 'tmFiltered' // dataset camelCase 键（含连字符会抛 SyntaxError）
 const FILTERED_ATTR = 'data-tm-filtered' // 对应 DOM 属性（querySelector 用）
+
+/** 取（或惰性创建）指定序列的年份推断状态；适配包未声明策略时返回 null */
+function yearStateFor(kind: 'post' | 'comment'): YearInferenceState | null {
+  const mode = adapter?.timestamp.year_inference
+  if (!mode) return null
+  if (kind === 'post') {
+    postYearState ??= createYearInferenceState(mode)
+    return postYearState
+  }
+  commentYearState ??= createYearInferenceState(mode)
+  return commentYearState
+}
 
 // ---------- 核心：过滤判定与应用 ----------
 
@@ -111,7 +134,7 @@ function decidePost(el: HTMLElement): PostDecision {
   }
   const anchor = el.dataset.tmAnchor ? Number(el.dataset.tmAnchor) : Date.now()
   if (!el.dataset.tmAnchor) el.dataset.tmAnchor = String(anchor)
-  const parsed = parseTimestamp(text, adapter, anchor)
+  const parsed = parseTimestamp(text, adapter, anchor, yearStateFor('post'))
   if (!parsed) {
     addDiagnostic('post', text)
     return 'unparseable'
@@ -204,7 +227,15 @@ function processComment(el: HTMLElement): void {
   if (el.dataset[FILTERED_FLAG] === '1') return
   if (!adapter.comment_timestamp_selector) return
 
-  const text = extractTimestampText(el, adapter.comment_timestamp_selector)
+  // 与帖子路径同样支持 attr / date_attr / strip_pattern：适配包声明的剥离规则
+  // （如集思录回复时间「YYYY-MM-DD HH:mm 来自属地」）对评论同样应生效
+  const text = extractTimestampText(
+    el,
+    adapter.comment_timestamp_selector,
+    adapter.timestamp.attr,
+    adapter.timestamp.date_attr,
+    adapter.timestamp.strip_pattern,
+  )
   if (!text) {
     addDiagnostic('comment', '未找到时间元素')
     unparseableCount++
@@ -214,7 +245,7 @@ function processComment(el: HTMLElement): void {
   // 评论时间锚定：与帖子一致，首次检测时刻持久化
   const anchor = el.dataset.tmAnchor ? Number(el.dataset.tmAnchor) : Date.now()
   if (!el.dataset.tmAnchor) el.dataset.tmAnchor = String(anchor)
-  const parsed = parseTimestamp(text, adapter, anchor)
+  const parsed = parseTimestamp(text, adapter, anchor, yearStateFor('comment'))
   if (!parsed) {
     addDiagnostic('comment', text)
     unparseableCount++
@@ -264,6 +295,9 @@ function teardownFilterState(): void {
   document.querySelectorAll('.tm-collapsed').forEach((ph) => ph.remove())
   // 重置 processed 缓存（WeakSet 不可清空，重建以允许重新判定）
   processed = new WeakSet()
+  // 年份推断按扫描会话生效：新会话必须从首行重新锚定，旧序列的游标一律丢弃
+  postYearState = null
+  commentYearState = null
   filteredCount = 0
   unparseableCount = 0
   diagnostics = []
@@ -822,43 +856,26 @@ chrome.storage.onChanged.addListener((changes, area) => {
 /** P2-5：远程适配包更新后重载适配器并重扫 */
 async function reloadAdapter(): Promise<void> {
   await AdapterManager.loadRemoteFromStorage()
-  adapter = AdapterManager.getAdapter(domain)
-  if (!adapter) return
-  // 与 init 同样执行白名单判定；页面不在范围内时保持静默退出
-  if (!isPathAllowed(adapter)) {
+  adapter = AdapterManager.getAdapterFor(domain, location.pathname)
+  if (!adapter) {
+    // 页面类型不在适配范围（同域多页面类型平台，如仅适配列表页/详情页）
     console.log('[时光机] 页面类型不在适配范围，跳过:', location.pathname)
-    adapter = null
     return
   }
   reapplyAll()
-}
-
-/** 页面是否在适配包 active_paths 白名单内（未声明时始终允许） */
-function isPathAllowed(platform: PlatformAdapter): boolean {
-  if (!platform.active_paths?.length) return true
-  return platform.active_paths.some((pattern) => {
-    try {
-      return new RegExp(pattern).test(location.pathname)
-    } catch {
-      return false
-    }
-  })
 }
 
 async function init(): Promise<void> {
   domain = extractDomain(location.hostname)
   // P2-5：优先加载 storage 中已更新的远程适配包
   await AdapterManager.loadRemoteFromStorage()
-  adapter = AdapterManager.getAdapter(domain)
+  adapter = AdapterManager.getAdapterFor(domain, location.pathname)
   if (!adapter) {
-    console.log('[时光机] 无适配包，跳过:', domain)
-    return
-  }
-  // active_paths 白名单：声明后仅匹配路径启用过滤与失效检测，其他路径静默退出；
-  // adapter 置 null 使 reloadSettings/reloadAdapter/reapplyAll 等消息通路同样早退
-  if (!isPathAllowed(adapter)) {
-    console.log('[时光机] 页面类型不在适配范围，跳过:', location.pathname)
-    adapter = null
+    // 同域多页面类型平台（active_paths 隔离）下，路径未命中任何页面类型时同样静默退出
+    console.log(
+      AdapterManager.hasAdapter(domain) ? '[时光机] 页面类型不在适配范围，跳过:' : '[时光机] 无适配包，跳过:',
+      AdapterManager.hasAdapter(domain) ? location.pathname : domain,
+    )
     return
   }
   settings = await getTimeSettings(domain)

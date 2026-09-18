@@ -24,7 +24,7 @@ import { check, finish } from '../helpers/check'
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
 // ---------- 1. SUPPORTED_SITES 派生 ----------
-check('平台数 = 4', SUPPORTED_SITES.length === 4, `got ${SUPPORTED_SITES.length}`)
+check('平台条目数 = 8（雪球/同花顺/集思录/东方财富股吧×3/天天基金/东方财富资讯）', SUPPORTED_SITES.length === 8, `got ${SUPPORTED_SITES.length}`)
 
 const byName = new Map(SUPPORTED_SITES.map((s) => [s.name, s]))
 const xueqiu = byName.get('雪球')
@@ -58,6 +58,25 @@ const ths = byName.get('同花顺')
 assert.ok(ths, '同花顺条目必须存在')
 check('同花顺未真机验证 → lastVerified = null', ths.lastVerified === null)
 check('同花顺能力不含虚拟分页（未配置）', !ths.capabilities.includes('个股跨页扫描'))
+check(
+  '同花顺页面类型行 = 1（纯列表平台也要有列表页能力行，不能空白）',
+  ths.pages.length === 1 && ths.pages[0].pageType === '列表页' && ths.pages[0].ordering === '仅已加载内容',
+  JSON.stringify(ths.pages),
+)
+
+check('集思录能力含 帖子过滤 / 详情评论过滤 / 快捷预设', jisilu.capabilities.includes('帖子过滤') && jisilu.capabilities.includes('详情评论过滤') && jisilu.capabilities.includes('快捷预设'), JSON.stringify(jisilu.capabilities))
+check(
+  '集思录页面类型行 = 2（列表页 + 帖子详情页）',
+  jisilu.pages.length === 2 && jisilu.pages.map((p) => p.pageType).join(',') === '列表页,帖子详情页',
+  JSON.stringify(jisilu.pages.map((p) => p.pageType)),
+)
+check(
+  '集思录评论行声明「仅已加载内容」（平台只渲染最近 99 条回复）',
+  jisilu.pages.find((p) => p.pageType === '帖子详情页')?.ordering === '仅已加载内容',
+  JSON.stringify(jisilu.pages.find((p) => p.pageType === '帖子详情页')),
+)
+check('集思录 lastVerified 与适配包声明一致（未真机验收则为 null）', jisilu.lastVerified === (jisiluAdapter.platforms[0].last_verified ?? null))
+check('集思录未声明跨页聚合（保留站点原生分页）', jisilu.pages.every((p) => p.crossPage === null), JSON.stringify(jisilu.pages.map((p) => p.crossPage)))
 
 const east = byName.get('东方财富资讯')
 assert.ok(east, '东方财富资讯条目必须存在')
@@ -81,9 +100,13 @@ const xueqiuDetail = xueqiu.pages.find((p) => p.pageType === '帖子详情页')
 assert.ok(xueqiuDetail, '雪球详情页条目必须存在')
 check('雪球详情页：评论过滤✓、无跨页', xueqiuDetail.comment === true && xueqiuDetail.crossPage === null)
 check(
-  '同花顺无页面类型行（纯列表适配：无 feed_context/virtual/comment 配置）',
-  ths.pages.length === 0,
-  JSON.stringify(ths.pages),
+  '评论行统一声明「仅已加载内容」（引擎不驱动任何平台的评论分页）',
+  SUPPORTED_SITES.every((s) => s.pages.filter((p) => p.comment).every((p) => p.ordering === '仅已加载内容')),
+)
+check(
+  '页面类型行并不总是空的：每个平台至少有 1 行能力',
+  SUPPORTED_SITES.every((s) => s.pages.length >= 1),
+  JSON.stringify(SUPPORTED_SITES.map((s) => [s.name, s.pages.length])),
 )
 check(
   '全部平台页面行 verified 与平台级 last_verified 一致',
@@ -91,11 +114,22 @@ check(
 )
 
 // ---------- 2. SUPPORTED_ORIGINS ----------
-check('SUPPORTED_ORIGINS 共 5 条（与 manifest optional 一致）', SUPPORTED_ORIGINS.length === 5, `got ${SUPPORTED_ORIGINS.length}`)
+check('SUPPORTED_ORIGINS 共 7 条（与 manifest optional 一致）', SUPPORTED_ORIGINS.length === 7, `got ${SUPPORTED_ORIGINS.length}`)
 check('origin 无重复', new Set(SUPPORTED_ORIGINS).size === SUPPORTED_ORIGINS.length)
-for (const origin of ['*://xueqiu.com/*', '*://t.10jqka.com.cn/*', '*://finance.eastmoney.com/*', '*://jisilu.cn/*', '*://www.jisilu.cn/*']) {
+for (const origin of ['*://xueqiu.com/*', '*://t.10jqka.com.cn/*', '*://finance.eastmoney.com/*', '*://guba.eastmoney.com/*', '*://fund.eastmoney.com/*', '*://jisilu.cn/*', '*://www.jisilu.cn/*']) {
   check(`包含 ${origin}`, SUPPORTED_ORIGINS.includes(origin))
 }
+// 同域多页面类型条目共享同一 origin，不得因此在权限清单里出现重复项
+check(
+  '东方财富股吧 3 个条目共享同一 origin（去重后 1 条）',
+  SUPPORTED_ORIGINS.filter((o) => o.includes('guba.eastmoney.com')).length === 1,
+)
+check(
+  '同域多条目平台：域名字段一致、名称各异（设置页按条目列出）',
+  SUPPORTED_SITES.filter((s) => s.domains.includes('guba.eastmoney.com')).map((s) => s.name).join('|') ===
+    '东方财富股吧·全部与热门|东方财富股吧·最新发帖|东方财富基金吧总版',
+  SUPPORTED_SITES.filter((s) => s.domains.includes('guba.eastmoney.com')).map((s) => s.name).join('|'),
+)
 
 // ---------- 3. schema：last_verified ----------
 const valid = validateAdapter(xueqiuAdapter)
