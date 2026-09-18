@@ -15,14 +15,15 @@
 ## 验证命令（顺序执行）
 
 ```bash
-npm test                # 唯一测试入口：package.json 中硬编码 17 个 tsx 文件
+npm test                # 唯一测试入口：package.json 中硬编码 23 个 tsx 文件
 npx tsc --noEmit        # 类型检查（tsconfig include 只含 src/，test/ 不参与检查）
 npm run build           # 产物 dist/（CRXJS loader + hash 文件名）
 git diff --check
 ```
 
 - **新增测试文件必须手动追加到 `package.json` 的 `test` 脚本**，否则不会被运行。
-- 无 lint / 无测试框架：测试 = `node:assert` + `JSDOM` + 手写 chrome mock，顶层断言抛错即失败。公共辅助在 `test/helpers/`（`check` / `dom-env` / `chrome-mock`）。单跑：`npx tsx test/unit/xueqiu-backfill.test.ts`。
+- 无 lint / 无测试框架：测试 = `node:assert` + `JSDOM` + 手写 chrome mock，顶层断言抛错即失败。公共辅助在 `test/helpers/`（`check` / `dom-env` / `chrome-mock`，`setupDom` 已注入 `DOMParser` 供 url 模式虚拟分页使用）。单跑：`npx tsx test/unit/xueqiu-backfill.test.ts`。
+- **平台 DOM fixture 在 `test/fixtures/`**（`jisilu-category` / `jisilu-topic` / `guba-stock-list` / `guba-fund-list` / `fund-detail-bar`）：从真实页面裁剪 + 用户内容匿名化，文件头注释记录取证日期/URL/结构发现与未决项。新增平台适配前先按此格式取证落 fixture，再写 `test/unit/platform-fixtures.test.ts` 断言（选择器命中、时间文本提取、年份推断行为）。**取证优先用真实浏览器（chrome-devtools MCP 在渲染后 DOM 上跑选择器）**：jsdom 抓服务端 HTML 看不到 JS 注入的节点（guba 的时间单元格类名、东财资讯的整个列表都在 JS 里），只用 jsdom 会误判选择器失效。
 - **Vite 配置了 `emptyOutDir: false`**（Windows safe-delete 拦截 quirk），dist/ 会残留旧 hash 文件；干净构建先 `rm -rf dist`。
 
 ## 构建产物与打包
@@ -35,10 +36,13 @@ git diff --check
 ## 架构关键（易踩坑）
 
 - **按需授权模型**：manifest 的 `content_scripts` 只有 `*://localhost/*` 占位（Chrome 不允许空数组）。真实注入由 background 用 `chrome.scripting.registerContentScripts` 动态注册（id `tm-main`，常量与 loader 读取见 `src/shared/registration.ts`）。平台清单两处：`vite.config.ts` 的 `SITE_ORIGINS`（`optional_host_permissions` 与 `web_accessible_resources.matches` 共用同一常量）与 `src/adapters/index.ts` 的内置适配包注册；background 的 `TARGET_MATCHES` 由适配包派生的 `SUPPORTED_ORIGINS` 自动同步。添加新平台 = 新增适配包 JSON + 注册（`src/adapters/index.ts`）+ 更新 `SITE_ORIGINS`。
-- **适配包 = 数据驱动 JSON**（内置 4 份：`xueqiu.json` v0.4.1 / `ths.json` / `jisilu.json` / `eastmoney-news.json` v0.1.0）：新增平台时写 JSON 并通过 `validateAdapter`（手写校验，`src/adapters/schema.ts`），改字段需同步 schema、`src/shared/types.ts` 的 `PlatformAdapter` 类型、content script 消费处及对应测试。
+- **适配包 = 数据驱动 JSON**（内置 6 份：`xueqiu.json` v0.4.1 / `ths.json` / `jisilu.json` v0.2.0 / `guba.json` v0.1.0（3 个页面类型条目）/ `fund.json` v0.1.0 / `eastmoney-news.json` v0.1.0）：新增平台时写 JSON 并通过 `validateAdapter`（手写校验，`src/adapters/schema.ts`），改字段需同步 schema、`src/shared/types.ts` 的 `PlatformAdapter` 类型、content script 消费处及对应测试。改动内置适配包后必须 `npm run adapters:build -- --version <递增>` 重生成 `adapters.json`（`sites-panel.test.ts` 会断言两者同步）；新增平台还要在 `vite.config.ts` 的 `SITE_ORIGINS` 加 origin、在 `src/adapters/index.ts` 注册。
+- **一个域名可有多个页面类型条目**（P2-21 前置能力）：`PlatformAdapter.active_paths` 隔离，`AdapterManager.getAdapterFor(domain, pathname)` 取路径命中条目（无 `active_paths` 的条目作为兜底，未命中返回 null → 内容脚本静默退出）；**发布脚本 `build-adapters-json.mjs` 要求同域多条目的每一条都必须声明 `active_paths`**，否则拒绝出包。新增平台适配若同域有两种模板/两种时间语义（如 guba 个股吧 vs 基金吧总版、「全部」的回复时间 vs 「最新发帖」的发帖时间），必须拆成独立条目——`timestamp.selector` 的数组是**同一时间语义**的行模板回退链，严禁用它表达语义差异。
+- **无年份时间（`MM-DD HH:mm` / `MMDD HH:mm`）由适配包 `timestamp.year_inference` 决定**：省略 = 旧行为（逐帖与当前时刻比较补当年，仅适合雪球「修改于」这类不依赖年份的场合）；`descending-list` = 按严格发帖时间倒序做序列推断（首行锚定 + 近 48h 守卫 + 月日回跳视为异常行），**异常行返回 null（默认显示）并把游标重对齐到该行**——不留神把游标卡在低水位会让其后所有正常行都被判为异常（guba 实测覆盖率 6% → 99%）；`never` = 不推断（按最后回复排序、年份不可判定的列表必须用它）。年份状态按扫描会话持有（`src/content/index.ts` 的 `yearStateFor`），`teardownFilterState` 时丢弃重建。规则与失败方向见 `src/shared/time.ts` 的 `inferYearFor`。
+- **虚拟分页有两种源页获取方式**（`virtual_pagination.source_mode`）：缺省 `click`（点击站内翻页控件 + 等列表 DOM 变化，雪球）；`url`（`page_url_pattern` 含 `{page}`，逐页 `fetch` 同源整页 + `DOMParser` 解析成离线文档，会话总从 `start_page` 重新聚合，空页/无新帖 ID 判末页）。`url` 模式不改动当前页面，因此缓存与去重跨页保持；**客户端渲染的站点不适用**（服务端 HTML 里没有帖子）。两种模式都要求 `native_pagination_selector`（用于隐藏站点分页），`next_selector`/`active_page_selector` 仅 `click` 模式必填。
 - storage keys：`timeSettings.<domain>`、`prefs`、`adapters.remote`（见 `src/shared/storage.ts`）。
 - 消息协议（`RuntimeMessage`）：background ↔ content script 广播 `TIME_SETTINGS_UPDATED` / `TOGGLE_FILTER` / `ADAPTERS_UPDATED` / `FILTER_COUNT_UPDATED` / `FILTER_STATE_CHANGED` / `PERMISSION_REVOKED`（授权撤销，content 收到后 `stopFiltering()` 恢复 DOM 并停止，对应 background `permissions.onRemoved`，见 `src/background/service-worker.ts`）；加新消息要同步 `src/shared/types.ts`。
-- content script（`src/content/index.ts`）是核心，含雪球虚拟分页引擎 `src/content/virtual-pagination.ts`（稳定 ID 去重、缓存、200 原生页上限），修改前先读该文件头部注释。
+- content script（`src/content/index.ts`）是核心，含虚拟分页引擎 `src/content/virtual-pagination.ts`（稳定 ID 去重、缓存、200 原生页上限、click/url 双源页策略），修改前先读该文件头部注释。
 - **信息流连续补拉**（`src/content/feed-backfill.ts`，P2-17 切片 1）：数据驱动 `feed_context.backfill`（contexts 白名单仅声明严格时间序类别如 7x24/关注），用户手动点「查找更早的帖子」触发滚动补拉，与虚拟分页互斥；`ScanProgress.unit: 'screens'` 供 Popup/悬浮条区分「屏/原生页」双语义。修改前先读该文件头部注释；内置适配包升版本不会破坏 adapters-update.test.ts（版本断言已动态推导）。
 - 过滤标记：`data-tm-filtered` 属性（dataset 键 `tmFiltered`，含连字符会抛 SyntaxError）；hide 策略 = `style.display:none`。
 - 开发用固定扩展 id 来自 vite 配置中的 `key`，对应私钥 `scripts/keys/timemachine-dev.pem`（本地文件，**已在 .gitignore，禁止提交**）。
