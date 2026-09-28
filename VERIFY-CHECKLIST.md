@@ -167,7 +167,7 @@
 - [ ] 远程版本递增的设备侧落地：等下一个 12h alarm 周期后读 `adapters.remote.version`
 - 纪律：远程包会遮挡更新的内置包 → 改内置包后必须 `npm run adapters:build` → 提交 → 推送 → purge CDN（详见 `AGENTS.md`）
 - [x] 2026-09-18 发布 v1.2.0（含集思录 v0.2.0 + `guba.json` + `fund.json`）：`git push origin main` → purge `adapters.json` 与 `.sha256`（均返回 `status: finished`）→ 拉取 CDN 内容比对，version=1.2.0、sha256 与本地发布产物一致 ✅
-- [ ] 2026-09-28 已本地生成 `adapters.json` v1.3.0（雪球 domains 补 `www.xueqiu.com`）：**待提交推送 + purge CDN**（sha256 见脚本输出；未推送前设备侧仍读 v1.2.0 远程包，雪球解析配置走内置包等效内容）
+- [x] 2026-09-28 发布 v1.3.0（雪球 domains 补 `www.xueqiu.com`，xueqiu.json v0.4.2）：`git push origin main` → purge `adapters.json` 与 `.sha256`（均 `status: finished`，CF+FY）→ 立即拉取 CDN 复核：version=1.3.0、8 个平台、雪球 domains 含 `www.xueqiu.com`，且 **CDN 实算 sha256 = CDN 声明值 = 本地发布产物**（`8da37df1…8bb7df`）三方一致 ✅（本次无传播延迟）
 - [ ] 设备侧落地复核：下一个 12h alarm 周期后读 `adapters.remote.version` 应为 1.2.0（商店更新不会立即拉取）
 
 ## 12. 性能（P1-4）

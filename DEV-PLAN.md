@@ -5,7 +5,7 @@
 
 ## 当前队列（未闭环项）
 
-- **适配包 v1.3.0 待发布**：2026-09-28 修雪球 `www` 覆盖（`SITE_ORIGINS` + `xueqiu.json` domains 补 `www.xueqiu.com`，v0.4.2；已真机重载复测通过，详见 `VERIFY-CHECKLIST.md` §10.7）。剩发布动作：`git push` → purge CDN（`adapters.json` + `.sha256`）→ 扩展随商店版本更新下发新可选权限。
+- **适配包 v1.3.0 已发布（2026-09-28）**：雪球 `www` 覆盖修复（`SITE_ORIGINS` + `xueqiu.json` domains 补 `www.xueqiu.com`，xueqiu.json v0.4.2）已推送并 purge CDN，CDN 内容三方 sha256 一致。剩余：① 扩展需随商店版本更新（`vite.config.ts` 仍为 1.0.0），www 域新可选权限才会下发到既有用户；② 设备侧 `adapters.remote.version` 落地复核（等 12h alarm）。
 - **P2-21 平台适配（取证驱动）**：引擎前置能力已落地；集思录、东方财富股吧（3 个页面类型条目）、天天基金·基金详情内嵌吧帖均已按真实 DOM 定稿。2026-09-28 扩展级真机已通过集思录分类列表/详情回复，以及股吧全部/最新发帖/基金吧总版/未适配排行页核心冒烟；仍欠集思录区间与排除视图、股吧详情评论排序/翻页、天天基金详情内嵌吧帖。剩余候选：东方财富主站其余页面类型（个股资讯/公告/财富号，内置 `eastmoney-news.json` 因栏目页客户端渲染需真机确认）、同花顺「资讯页」（无取证样本）、天天基金「单基金吧」（登录态旧模板）；淘股吧/通达信不承诺。
 - **适配包已发布**：`adapters.json` v1.2.0（集思录 v0.2.0 + 新增 `guba.json`/`fund.json`，8 个平台条目）已提交推送并 purge CDN，2026-09-18 实测 CDN 内容与本地发布产物 sha256 一致 ✅（发布纪律见 `AGENTS.md`）。
 - **发布产物 schema 校验缺口**：`scripts/build-adapters-json.mjs` 只检查结构与域名规则，不做 `validateAdapter`；非法包会被客户端静默丢弃。当前靠 `sites-panel.test.ts` 对 `adapters.json` 的断言兜住（npm test 先于发布），脚本内联校验归 P2-22。
