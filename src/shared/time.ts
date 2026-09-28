@@ -336,7 +336,10 @@ export function parseTimestamp(
   if (ts.year_inference && !/[Yy]/.test(ts.format ?? '')) {
     const sample = parseNoYearSample(extractTimePart(extractText))
     if (sample) {
-      const year = yearState ? inferYearFor(yearState, sample) : null
+      // 时间参照与相对时间解析同源（anchor = 帖子首次被决策的时刻，见 content/index.ts
+      // 的 dataset.tmAnchor）。缺这个参数会让「近 48h 守卫」退回真实时钟，长命标签页
+      // 重扫历史锚点时判定漂移，且用例无法注入固定时钟。
+      const year = yearState ? inferYearFor(yearState, sample, anchor) : null
       if (year === null) return null
       const composed = composeTimestamp(year, sample)
       return composed === null ? null : { timestamp: composed, isRelative: false }
