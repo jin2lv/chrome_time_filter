@@ -108,7 +108,7 @@ assert.match(guba!.querySelector('summary')?.textContent ?? '', /页面类型能
 // ---------- 3. 单条目平台不回归 ----------
 const xueqiu = rowByName('雪球')
 assert.ok(xueqiu, '雪球行应以平台名作标题')
-assert.equal(xueqiu!.querySelector('.site-domain')?.textContent, 'xueqiu.com', '单条目仍展示域名')
+assert.equal(xueqiu!.querySelector('.site-domain')?.textContent, 'xueqiu.com / www.xueqiu.com', '双域名完整展示（2026-09-28 补 www）')
 assert.equal(xueqiu!.querySelectorAll('.pages-table tbody tr').length, 3, '雪球 3 类页面')
 assert.equal(
   xueqiu!.querySelector('.pages-table tbody td')?.textContent,

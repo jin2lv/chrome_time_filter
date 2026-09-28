@@ -6,7 +6,10 @@ import { crx, defineManifest } from '@crxjs/vite-plugin'
  * 共用，避免两处手抄漂移。新增平台时需同步在 src/adapters/ 注册适配包。
  */
 const SITE_ORIGINS = [
+  // apex 与 www 必须同时声明：Chrome 匹配模式中 apex 不匹配其子域，
+  // 只写裸域会让 www.xueqiu.com（用户日常入口）既无 host 权限也不在动态注册内
   '*://xueqiu.com/*',
+  '*://www.xueqiu.com/*',
   '*://t.10jqka.com.cn/*',
   '*://finance.eastmoney.com/*',
   '*://guba.eastmoney.com/*',

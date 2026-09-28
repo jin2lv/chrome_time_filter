@@ -3,9 +3,9 @@
  * 运行：npx tsx test/unit/sites-panel.test.ts
  *
  * 覆盖：
- * - SUPPORTED_SITES 派生：平台数、域名/origin 映射（jisilu 双 origin）、能力摘要按配置派生、
+ * - SUPPORTED_SITES 派生：平台数、域名/origin 映射（雪球/集思录双 origin）、能力摘要按配置派生、
  *   last_verified 仅出现在已真机验证的平台
- * - SUPPORTED_ORIGINS：与 manifest optional_host_permissions 一致（5 条、去重）
+ * - SUPPORTED_ORIGINS：与 manifest optional_host_permissions 一致（8 条、去重）
  * - schema：last_verified 合法值通过、非法格式拒绝；全部内置适配包仍过校验（含新字段）
  */
 import assert from 'node:assert'
@@ -29,8 +29,8 @@ check('平台条目数 = 8（雪球/同花顺/集思录/东方财富股吧×3/�
 const byName = new Map(SUPPORTED_SITES.map((s) => [s.name, s]))
 const xueqiu = byName.get('雪球')
 assert.ok(xueqiu, '雪球条目必须存在')
-check('雪球 domains = [xueqiu.com]', JSON.stringify(xueqiu.domains) === JSON.stringify(['xueqiu.com']))
-check('雪球 origin 映射', JSON.stringify(xueqiu.origins) === JSON.stringify(['*://xueqiu.com/*']))
+check('雪球双 origin 映射（裸域 + www，2026-09-28 修 www 未覆盖）', JSON.stringify(xueqiu.domains) === JSON.stringify(['xueqiu.com', 'www.xueqiu.com']))
+check('雪球 origin 映射', JSON.stringify(xueqiu.origins) === JSON.stringify(['*://xueqiu.com/*', '*://www.xueqiu.com/*']))
 // last_verified / version 从内置适配包动态推导（写死会在每次合法取证更新时误报，
 // 见 AGENTS.md「内置适配包升版本不破坏测试」的同类教训）
 check(
@@ -114,9 +114,9 @@ check(
 )
 
 // ---------- 2. SUPPORTED_ORIGINS ----------
-check('SUPPORTED_ORIGINS 共 7 条（与 manifest optional 一致）', SUPPORTED_ORIGINS.length === 7, `got ${SUPPORTED_ORIGINS.length}`)
+check('SUPPORTED_ORIGINS 共 8 条（与 manifest optional 一致）', SUPPORTED_ORIGINS.length === 8, `got ${SUPPORTED_ORIGINS.length}`)
 check('origin 无重复', new Set(SUPPORTED_ORIGINS).size === SUPPORTED_ORIGINS.length)
-for (const origin of ['*://xueqiu.com/*', '*://t.10jqka.com.cn/*', '*://finance.eastmoney.com/*', '*://guba.eastmoney.com/*', '*://fund.eastmoney.com/*', '*://jisilu.cn/*', '*://www.jisilu.cn/*']) {
+for (const origin of ['*://xueqiu.com/*', '*://www.xueqiu.com/*', '*://t.10jqka.com.cn/*', '*://finance.eastmoney.com/*', '*://guba.eastmoney.com/*', '*://fund.eastmoney.com/*', '*://jisilu.cn/*', '*://www.jisilu.cn/*']) {
   check(`包含 ${origin}`, SUPPORTED_ORIGINS.includes(origin))
 }
 // 同域多页面类型条目共享同一 origin，不得因此在权限清单里出现重复项

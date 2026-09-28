@@ -1,8 +1,8 @@
 /**
  * 生成临时测试构建 dist-test/：
- * 复制 dist/ 并在 manifest 追加必需 host_permissions（*://xueqiu.com/*），
- * 使动态注册的 content script 在无授权交互下也能注入（仅供本地端到端测试，
- * 正式 manifest 不受影响）。
+ * 复制 dist/ 并在 manifest 追加必需 host_permissions（同域双域名，如
+ * *://xueqiu.com/* + *://www.xueqiu.com/*），使动态注册的 content script
+ * 在无授权交互下也能注入（仅供本地端到端测试，正式 manifest 不受影响）。
  *
  * 用法：node scripts/make-test-build.mjs
  */
