@@ -1,5 +1,6 @@
 /**
  * Content Script 行为测试（P1-4）：jsdom + chrome mock 验证过滤逻辑
+ * 守护的用户可见行为：开启过滤后新帖隐藏、旧帖保留（零误杀/零漏杀），滚动加载的帖子持续被过滤，改设置立即重滤
  * 运行：npx tsx test/unit/content.test.ts
  *
  * 覆盖（验收标准 #1 逻辑层）：

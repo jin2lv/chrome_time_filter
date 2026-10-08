@@ -89,11 +89,14 @@ async function init(): Promise<void> {
   const tab = await pickTargetTab()
   if (!tab?.id || !tab.url) return
   tabId = tab.id
-  hostname = new URL(tab.url).hostname
+  const tabUrl = new URL(tab.url)
+  hostname = tabUrl.hostname
   domain = extractDomain(hostname)
 
   const isTarget = AdapterManager.hasAdapter(domain)
-  adapter = AdapterManager.getAdapter(domain)
+  // 同域多页面类型条目（guba 3 条）时按 pathname 命中实际条目，
+  // 未命中页面类型（如 guba /rank/）与内容脚本口径一致显示「未知站点」
+  adapter = AdapterManager.getAdapterFor(domain, tabUrl.pathname)
   // 截止预设按适配包渲染（授权 early-return 之前调用，未授权态按钮存在且被禁用）
   renderCutoffPresets(adapter)
   siteEl.textContent = `${adapter?.name ?? '未知站点'} ${domain}`

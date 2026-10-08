@@ -1,5 +1,6 @@
 /**
  * 设置页「站点与适配」渲染测试（P2-20 / P2-22 同域多条目归组）
+ * 守护的用户可见行为：同域多页面类型（股吧 3 条目）在设置页归为一行——授权/撤销/重置按钮只出现一次；页面类型能力逐条列出
  * 运行：npx tsx test/unit/options-sites.test.ts
  *
  * 覆盖：
@@ -70,8 +71,8 @@ assert.equal(
     .map((r) => r.querySelector('.site-name')?.textContent)
     .join(' / ')}`,
 )
-assert.equal(SUPPORTED_SITES.length, 8, '内置平台条目应为 8 条')
-assert.equal(rows.length, 6, '归组后应为 6 行（guba 3 条目合并为 1 行）')
+assert.equal(SUPPORTED_SITES.length, 7, '内置平台条目应为 7 条（eastmoney-news 已下架）')
+assert.equal(rows.length, 5, '归组后应为 5 行（guba 3 条目合并为 1 行）')
 
 const guba = rowByName('guba.eastmoney.com')
 assert.ok(guba, 'guba 行应以域名作标题（多条目组）')

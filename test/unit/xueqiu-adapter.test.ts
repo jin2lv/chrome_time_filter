@@ -1,3 +1,8 @@
+/**
+ * 雪球适配包测试
+ * 守护的用户可见行为：雪球各页面（信息流/7x24/个股/评论）的选择器与时间解析行为不漂移（7x24 分组标题组合解析等）
+ * 运行：npx tsx test/unit/xueqiu-adapter.test.ts
+ */
 import assert from 'node:assert'
 import { JSDOM } from 'jsdom'
 import xueqiu from '../../src/adapters/xueqiu.json'

@@ -16,16 +16,15 @@ import thsAdapter from './ths.json'
 import jisiluAdapter from './jisilu.json'
 import gubaAdapter from './guba.json'
 import fundAdapter from './fund.json'
-import eastmoneyNewsAdapter from './eastmoney-news.json'
 
-/** 内置兜底适配包（随扩展打包，始终可用） */
+/** 内置兜底适配包（随扩展打包，始终可用）
+ *  2026-10-08 冻结决议：eastmoney-news 下架（栏目页客户端渲染、选择器有效性未确认，不宣称支持） */
 const BUILTIN_ADAPTERS: Adapter[] = [
   xueqiuAdapter as unknown as Adapter,
   thsAdapter as unknown as Adapter,
   jisiluAdapter as unknown as Adapter,
   gubaAdapter as unknown as Adapter,
   fundAdapter as unknown as Adapter,
-  eastmoneyNewsAdapter as unknown as Adapter,
 ]
 
 class AdapterManagerImpl {

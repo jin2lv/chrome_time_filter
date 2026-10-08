@@ -1,5 +1,10 @@
 /**
  * 服务端 URL 翻页源策略测试（P2-21 前置能力）
+ * ⚠️ 悬置（2026-10-08 冻结决议）：url 分页引擎无适配包使用、真机未验证，本测试已移出
+ * `package.json` 主 test 链，仅保留可单跑（npx tsx test/unit/url-pagination.test.ts）。
+ * 启用 url 模式前须重新真机验收（见 DEV-PLAN 悬置区）。
+ *
+ * 守护的用户可见行为（若启用）：url 翻页模式逐页拉取整页并跨页去重重排，原生列表与分页隐藏，末页/失败/取消正确终止
  * 运行：npx tsx test/unit/url-pagination.test.ts
  *
  * 覆盖 VirtualPaginationController 的 source_mode='url'：

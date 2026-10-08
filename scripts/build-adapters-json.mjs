@@ -25,7 +25,7 @@ const root = resolve(__dirname, '..')
 const ALL_SOURCES = new Set(
   readdirSync(join(root, 'src/adapters')).filter((file) => file.endsWith('.json')),
 )
-const PREFERRED_ORDER = ['xueqiu.json', 'ths.json', 'jisilu.json', 'guba.json', 'fund.json', 'eastmoney-news.json']
+const PREFERRED_ORDER = ['xueqiu.json', 'ths.json', 'jisilu.json', 'guba.json', 'fund.json']
 const SOURCES = [
   ...PREFERRED_ORDER.filter((file) => ALL_SOURCES.has(file)),
   ...[...ALL_SOURCES].filter((file) => !PREFERRED_ORDER.includes(file)).sort(),

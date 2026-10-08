@@ -1,3 +1,8 @@
+/**
+ * 雪球个股类别切换测试
+ * 守护的用户可见行为：切换个股页类别（讨论/资讯等）时旧扫描取消、计数隔离、从新类别第 1 页重新聚合，无旧上下文串流
+ * 运行：npx tsx test/unit/xueqiu-category.test.ts
+ */
 import assert from 'node:assert'
 import { setupDom } from '../helpers/dom-env'
 

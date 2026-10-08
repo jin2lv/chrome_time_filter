@@ -1,5 +1,6 @@
 /**
  * Content Script 区间（window）模式 + 前台补扫看门狗测试
+ * 守护的用户可见行为：区间模式只显示窗口内帖子；标签页长时间后台后回到前台，越界帖子仍会被补扫隐藏
  * 运行：npx tsx test/unit/content-interval.test.ts
  *
  * 背景（2026-09-07 真机发现）：区间模式下标签页长时间空闲（Chrome 后台节流/内存回收）

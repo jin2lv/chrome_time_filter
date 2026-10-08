@@ -11,7 +11,6 @@ const SITE_ORIGINS = [
   '*://xueqiu.com/*',
   '*://www.xueqiu.com/*',
   '*://t.10jqka.com.cn/*',
-  '*://finance.eastmoney.com/*',
   '*://guba.eastmoney.com/*',
   '*://fund.eastmoney.com/*',
   '*://jisilu.cn/*',
@@ -31,7 +30,7 @@ const SITE_ORIGINS = [
 const manifest = defineManifest({
   manifest_version: 3,
   name: '时光机',
-  version: '1.0.0',
+  version: '1.1.0',
   description: '只看到指定时间点之前发布的帖子，过滤其后的内容。',
   minimum_chrome_version: '110',
   // 固定扩展 id（开发调试/动态注入需要稳定 id）。

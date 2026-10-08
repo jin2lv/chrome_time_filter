@@ -1,3 +1,8 @@
+/**
+ * Popup 区间模式测试
+ * 守护的用户可见行为：区间模式可输入/保存/回显起止时间；非法输入（开始晚于结束、只填一端）报错且不覆盖已存设置
+ * 运行：npx tsx test/unit/popup-window.test.ts
+ */
 import assert from 'node:assert'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'

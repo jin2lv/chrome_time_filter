@@ -1,3 +1,8 @@
+/**
+ * 区间模式边界判定测试
+ * 守护的用户可见行为：区间模式下恰在开始/结束时刻的帖子显示、区间外的隐藏、无法解析的默认显示（零误杀/零漏杀的边界样本）
+ * 运行：npx tsx test/unit/window-content.test.ts
+ */
 import assert from 'node:assert'
 import { setupDom } from '../helpers/dom-env'
 

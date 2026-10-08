@@ -1,3 +1,8 @@
+/**
+ * Popup 授权链路测试
+ * 守护的用户可见行为：未授权站点 Popup 显示授权引导且控件禁用；点「授权」后立即注入过滤；非目标站点不误报
+ * 运行：npx tsx test/unit/popup-auth.test.ts
+ */
 import assert from 'node:assert'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'

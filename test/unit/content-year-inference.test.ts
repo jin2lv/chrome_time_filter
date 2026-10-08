@@ -1,5 +1,6 @@
 /**
  * Content Script 无年份时间过滤测试（P2-21 前置能力的接线验证）
+ * 守护的用户可见行为：声明 year_inference 的平台（股吧/天天基金/同花顺）无年份时间帖子不被误杀，推断失败时默认显示并计入「无法解析」
  * 运行：npx tsx test/unit/content-year-inference.test.ts
  *
  * 覆盖：

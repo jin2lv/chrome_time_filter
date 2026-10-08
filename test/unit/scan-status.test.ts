@@ -1,5 +1,6 @@
 /**
  * 扫描状态文案测试（P2-17 切片 2：Popup 与诊断报告共用 shared/scan-text.ts）
+ * 守护的用户可见行为：扫描中/末页/上限/取消/失败各终态在 Popup 与悬浮条显示正确文案（屏/原生页双单位），诊断行脱敏
  * 运行：npx tsx test/unit/scan-status.test.ts
  *
  * 覆盖：

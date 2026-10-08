@@ -1,11 +1,12 @@
 /**
  * P2-20 多站授权与每站设置——支持站点能力矩阵测试
+ * 守护的用户可见行为：设置页能力矩阵与「授权全部金融站点」清单 = 实际内置适配包（防发布事故：改了适配包忘重生成/忘删下架条目时这里先红）
  * 运行：npx tsx test/unit/sites-panel.test.ts
  *
  * 覆盖：
  * - SUPPORTED_SITES 派生：平台数、域名/origin 映射（雪球/集思录双 origin）、能力摘要按配置派生、
  *   last_verified 仅出现在已真机验证的平台
- * - SUPPORTED_ORIGINS：与 manifest optional_host_permissions 一致（8 条、去重）
+ * - SUPPORTED_ORIGINS：与 manifest optional_host_permissions 一致（7 条、去重；eastmoney-news 2026-10-08 下架）
  * - schema：last_verified 合法值通过、非法格式拒绝；全部内置适配包仍过校验（含新字段）
  */
 import assert from 'node:assert'
@@ -18,13 +19,12 @@ import { validateAdapter } from '../../src/adapters/schema'
 import xueqiuAdapter from '../../src/adapters/xueqiu.json'
 import thsAdapter from '../../src/adapters/ths.json'
 import jisiluAdapter from '../../src/adapters/jisilu.json'
-import eastmoneyNewsAdapter from '../../src/adapters/eastmoney-news.json'
 import { check, finish } from '../helpers/check'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
 // ---------- 1. SUPPORTED_SITES 派生 ----------
-check('平台条目数 = 8（雪球/同花顺/集思录/东方财富股吧×3/天天基金/东方财富资讯）', SUPPORTED_SITES.length === 8, `got ${SUPPORTED_SITES.length}`)
+check('平台条目数 = 7（雪球/同花顺/集思录/东方财富股吧×3/天天基金）', SUPPORTED_SITES.length === 7, `got ${SUPPORTED_SITES.length}`)
 
 const byName = new Map(SUPPORTED_SITES.map((s) => [s.name, s]))
 const xueqiu = byName.get('雪球')
@@ -77,10 +77,7 @@ check(
 )
 check('集思录 lastVerified 与适配包声明一致（未真机验收则为 null）', jisilu.lastVerified === (jisiluAdapter.platforms[0].last_verified ?? null))
 check('集思录未声明跨页聚合（保留站点原生分页）', jisilu.pages.every((p) => p.crossPage === null), JSON.stringify(jisilu.pages.map((p) => p.crossPage)))
-
-const east = byName.get('东方财富资讯')
-assert.ok(east, '东方财富资讯条目必须存在')
-check('东方财富资讯能力不含评论（未配置）', !east.capabilities.includes('详情评论过滤'))
+check('东方财富资讯已下架（不再派生条目）', byName.get('东方财富资讯') === undefined)
 
 // ---------- 1b. 页面类型能力矩阵（P2-18） ----------
 check('雪球 3 类页面（信息流/个股/详情）', xueqiu.pages.length === 3, JSON.stringify(xueqiu.pages.map((p) => p.pageType)))
@@ -114,11 +111,12 @@ check(
 )
 
 // ---------- 2. SUPPORTED_ORIGINS ----------
-check('SUPPORTED_ORIGINS 共 8 条（与 manifest optional 一致）', SUPPORTED_ORIGINS.length === 8, `got ${SUPPORTED_ORIGINS.length}`)
+check('SUPPORTED_ORIGINS 共 7 条（与 manifest optional 一致）', SUPPORTED_ORIGINS.length === 7, `got ${SUPPORTED_ORIGINS.length}`)
 check('origin 无重复', new Set(SUPPORTED_ORIGINS).size === SUPPORTED_ORIGINS.length)
-for (const origin of ['*://xueqiu.com/*', '*://www.xueqiu.com/*', '*://t.10jqka.com.cn/*', '*://finance.eastmoney.com/*', '*://guba.eastmoney.com/*', '*://fund.eastmoney.com/*', '*://jisilu.cn/*', '*://www.jisilu.cn/*']) {
+for (const origin of ['*://xueqiu.com/*', '*://www.xueqiu.com/*', '*://t.10jqka.com.cn/*', '*://guba.eastmoney.com/*', '*://fund.eastmoney.com/*', '*://jisilu.cn/*', '*://www.jisilu.cn/*']) {
   check(`包含 ${origin}`, SUPPORTED_ORIGINS.includes(origin))
 }
+check('eastmoney-news 已下架：finance origin 不在授权清单', !SUPPORTED_ORIGINS.includes('*://finance.eastmoney.com/*'))
 // 同域多页面类型条目共享同一 origin，不得因此在权限清单里出现重复项
 check(
   '东方财富股吧 3 个条目共享同一 origin（去重后 1 条）',
@@ -143,7 +141,6 @@ check('非法 last_verified 格式被拒绝', badErrs !== null && badErrs.some((
 for (const [name, pkg] of [
   ['同花顺', thsAdapter],
   ['集思录', jisiluAdapter],
-  ['东方财富资讯', eastmoneyNewsAdapter],
 ] as const) {
   const errs = validateAdapter(pkg)
   check(`${name}适配包仍过校验`, errs === null, JSON.stringify(errs))
@@ -154,7 +151,7 @@ const releaseJson = readFileSync(join(repoRoot, 'adapters.json'))
 const releasePkg = JSON.parse(releaseJson.toString('utf8'))
 check('adapters.json 通过 schema 校验', validateAdapter(releasePkg) === null, JSON.stringify(validateAdapter(releasePkg)))
 check(
-  'adapters.json 覆盖全部 4 个内置平台',
+  'adapters.json 覆盖全部内置平台（与 SUPPORTED_SITES 数量一致）',
   releasePkg.platforms.length === SUPPORTED_SITES.length,
   `${releasePkg.platforms.length} vs ${SUPPORTED_SITES.length}`,
 )

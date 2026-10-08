@@ -1,3 +1,8 @@
+/**
+ * 雪球个股虚拟分页测试
+ * 守护的用户可见行为：个股页开启过滤后首屏不空（跨原生页收满 10 条即停）、「下一页」续扫不重复、「上一页」走缓存、扫描可取消且干净恢复
+ * 运行：npx tsx test/unit/xueqiu-backfill.test.ts
+ */
 import assert from 'node:assert'
 import { VirtualPaginationController, type PostDecision } from '../../src/content/virtual-pagination'
 import type { ScanProgress } from '../../src/shared/types'

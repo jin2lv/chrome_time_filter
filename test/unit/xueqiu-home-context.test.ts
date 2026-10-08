@@ -1,3 +1,8 @@
+/**
+ * 雪球首页类别上下文隔离测试
+ * 守护的用户可见行为：首页切换信息流类别（关注/基金/7x24 及二级标签）时计数隔离、缓存隔离、旧上下文帖子不串流到新类别
+ * 运行：npx tsx test/unit/xueqiu-home-context.test.ts
+ */
 import assert from 'node:assert'
 import { setupDom } from '../helpers/dom-env'
 

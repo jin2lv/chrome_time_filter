@@ -1,5 +1,6 @@
 /**
  * 单元测试：时间解析与截止判定逻辑（P1-4）
+ * 守护的用户可见行为：帖子按其时间戳被正确判定显示/隐藏（相对时间、绝对时间、无法解析回退显示并计数）
  * 运行：npx tsx test/unit/time.test.ts
  */
 import assert from 'node:assert'

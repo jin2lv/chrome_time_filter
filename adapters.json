@@ -1,5 +1,5 @@
 {
-  "version": "1.3.0",
+  "version": "1.4.0",
   "platforms": [
     {
       "name": "雪球",
@@ -149,7 +149,8 @@
         "type": "custom",
         "format": "MMDD HH:mm",
         "attr": null,
-        "date_attr": "data-date"
+        "date_attr": "data-date",
+        "year_inference": "descending-list"
       },
       "comment_selectors": [],
       "comment_timestamp_selector": "",
@@ -167,7 +168,7 @@
           "value": "yesterday_midnight"
         }
       ],
-      "notes": "DOM 取证于 2026-08-11：首页信息流 li.feed-item（实测 36 条），日期在容器 data-date 属性（MMDD，如 0811），时间在 .feed-item-timeline-time（HH:mm）。组合为 'MMDD HH:mm'，无年份需补当年并处理跨年。评论选择器待 P2-4 取证。"
+      "notes": "DOM 取证于 2026-08-11：首页信息流 li.feed-item（实测 36 条），日期在容器 data-date 属性（MMDD，如 0811），时间在 .feed-item-timeline-time（HH:mm）。组合为 'MMDD HH:mm'。2026-10-08 补 year_inference: descending-list（首页信息流按发帖时间严格倒序，跨年帖不误杀：月日大于今日的行按上一年处理，不可推断行默认显示）。评论选择器无 Web 端，不扩展。"
     },
     {
       "name": "集思录",
@@ -352,38 +353,6 @@
         }
       ],
       "notes": "2026-09-18 真实浏览器（渲染后 DOM）取证，免登录、无滑块。容器 .barEssayListWrap > table.popTable > tbody > tr，用 :has(td.td05) 排除表头行（<tr><th>…，否则会多出 1 行「无法解析」计数）。列结构：td01 阅读数、td02 回复数、td03 标题、td04 作者、td05 最新更新时间（MM-DD HH:mm 无年份）。时间严格倒序、首行新鲜（实测 21 小时前）→ year_inference=descending-list。**上下文注意**：行内混有不同吧来源（实测 8 个吧代码：of018957、zssh000001、of000001、of001638、of008327、of028647、of100018、of027762），即该内嵌列表按基金/指数吧聚合，不能假设单一吧上下文；链接为绝对地址 http://fund.eastmoney.com/ba/news,{code},{id}.html。列表固定约 20 条、无分页。页面白名单仅 /{6位数字}.html（基金详情），其余 fund.eastmoney.com 页面类型未取证、静默退出；单基金吧 list,of{code}.html 属登录态旧模板，未纳入本期。"
-    },
-    {
-      "name": "东方财富资讯",
-      "domains": [
-        "finance.eastmoney.com"
-      ],
-      "post_selectors": [
-        "li[id^='newsTr']"
-      ],
-      "timestamp": {
-        "selector": "p.time",
-        "type": "absolute",
-        "format": "YYYY年MM月DD日 HH:mm"
-      },
-      "active_paths": [
-        "^/a/[a-z]+(_\\d+)?\\.html$"
-      ],
-      "quick_presets": [
-        {
-          "label": "1小时前",
-          "value": "1_hour_ago"
-        },
-        {
-          "label": "今日0点",
-          "value": "today_midnight"
-        },
-        {
-          "label": "昨日0点",
-          "value": "yesterday_midnight"
-        }
-      ],
-      "notes": "DOM 取证于 2026-08-18：证券聚焦 a/czqyw.html 与股市评论 a/cgspl.html 双栏目同模板（41-42 条/页），列表 li[id^='newsTr']（有图/无图两变体均含 .text），时间 p.time 为 YYYY年MM月DD日 HH:mm 全年份绝对时间；分页 {栏目}_{n}.html 服务端 URL，栏目即上下文。active_paths 排除 /a/{数字}.html 正文页（无列表时间流，正文页不启用过滤）。选择器为单快照样本待真机验收。"
     }
   ]
 }
