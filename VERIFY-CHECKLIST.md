@@ -194,7 +194,8 @@
 - 纪律：远程包会遮挡更新的内置包 → 改内置包后必须 `npm run adapters:build` → 提交 → 推送 → purge CDN（详见 `AGENTS.md`）
 - [x] 2026-09-18 发布 v1.2.0（含集思录 v0.2.0 + `guba.json` + `fund.json`）：`git push origin main` → purge `adapters.json` 与 `.sha256`（均返回 `status: finished`）→ 拉取 CDN 内容比对，version=1.2.0、sha256 与本地发布产物一致 ✅
 - [x] 2026-09-28 发布 v1.3.0（雪球 domains 补 `www.xueqiu.com`，xueqiu.json v0.4.2）：`git push origin main` → purge `adapters.json` 与 `.sha256`（均 `status: finished`，CF+FY）→ 立即拉取 CDN 复核：version=1.3.0、8 个平台、雪球 domains 含 `www.xueqiu.com`，且 **CDN 实算 sha256 = CDN 声明值 = 本地发布产物**（`8da37df1…8bb7df`）三方一致 ✅（本次无传播延迟）
-- [ ] 设备侧落地复核：下一个 12h alarm 周期后读 `adapters.remote.version` 应为 1.2.0（商店更新不会立即拉取）
+- [ ] 设备侧落地复核：下一个 12h alarm 周期后读 `adapters.remote.version` 应为 **1.4.0**（商店更新不会立即拉取）
+- [x] 2026-10-08 发布 v1.4.0（eastmoney-news 下架 + `ths.json` v0.1.1 年份口径，7 个平台，随冻结收尾 `d576798`）：`git push origin main` → purge `adapters.json` 与 `.sha256`（均 `status: finished`，CF+FY）→ 拉取 CDN 复核：version=1.4.0、7 个平台、**无 `finance.eastmoney.com`**，且 CDN 实算 sha256 = CDN 声明值 = 本地发布产物（`af1d77f8…bf485cc69`）三方一致 ✅（无传播延迟）
 
 ## 12. 性能（P1-4）
 

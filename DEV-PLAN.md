@@ -27,7 +27,7 @@
 - [x] **扩展版本号** `vite.config.ts` 1.0.0 → 1.1.0（雪球 www 域新可选权限随商店更新下发给既有用户）
 - [x] `scripts/e2e.mjs` 硬编码本机 playwright 路径：决议保留（仅限 Windows 本机，文档已标注）
 
-待执行（等用户确认）：提交 → 推送 → purge CDN → 复核 `adapters.json` v1.4.0 与 `.sha256` 三方 sha256 一致（发布纪律见 `AGENTS.md`）。
+已执行（2026-10-08）：提交推送（`b349e7e` + `d576798`）→ purge CDN → 复核 `adapters.json` v1.4.0：CDN 实算 sha256 = CDN 声明 = 本地（`af1d77f8…bf485cc69`）三方一致，CDN 已无 `finance.eastmoney.com` ✅（记录见 `VERIFY-CHECKLIST.md` §11）。
 
 真机项（一次会话，按风控纪律；清单见 `VERIFY-CHECKLIST.md`「冻结验收口径」）：
 
